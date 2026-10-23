@@ -23,19 +23,24 @@ Project: **sudiku-zui** (organisasi info-zuisystem-org), terpisah dari aplikasi 
 ## 2. Paket dan Zui Admin
 Studiku memakai pola **standar** Zui Admin, sama dengan ZUI KONTRAKTOR, ZUI JURNAL, dan ZUI TO-DO. Satu pengguna = satu "perusahaan" (ID = UID).
 
-| Zui Admin | Studiku | Isi |
-|---|---|---|
-| Starter | Pelajar | Catatan tanpa batas, PDF, statistik fokus, warna tema |
-| Pro | Keluarga | Fitur Pelajar + grup keluarga sampai 3 anak (anak ikut Premium) |
-| Bisnis | Sekolah dan bimbel | Untuk akun berperan sekolah: kelas, kode guru, guru dan mapel per kelas, tugas, nilai, dasbor. Guru ikut paket sekolahnya (tidak berlangganan sendiri). Bisa dipesan dari menu Berlangganan (harga dasar 30 siswa, `PRICE.business`) atau diaktifkan manual di Zui Admin (Pelanggan > Perpanjang, pilih Bisnis) untuk kesepakatan khusus |
-| Gratis selamanya | semua fitur | Dicentang manual di Zui Admin |
+| Zui Admin | Studiku | Harga (1 bln / 6 bln / 1 thn) | Isi |
+|---|---|---|---|
+| – | **Murid** | Gratis | Semua fitur belajar: jadwal, tugas, catatan tanpa batas, nilai, absensi, kelas, pengumuman |
+| Starter | **Guru** | Rp25.000 / Rp125.000 / Rp249.000 | Kelas sendiri (sekolah, les, bimbel, kursus): tugas, nilai, absensi, jadwal, pesan orang tua. Gratis bila sekolahnya memakai paket Sekolah |
+| Pro | **Orang tua** | Rp10.000 / Rp50.000 / Rp99.000 | Pantau jadwal, tugas, nilai, absensi sampai 3 anak, pesan ke guru. Gratis bila kelas anak milik sekolah Terpadu. Pengumuman selalu gratis |
+| Bisnis | **Sekolah Manajemen** | Rp100.000 / Rp500.000 / Rp1.000.000 | Dasbor guru, pengumuman, pesan guru, program; semua guru sekolah ikut aktif |
+| Bisnis | **Sekolah Terpadu** | Rp5.000 per murid per bulan (12 bulan bayar 10) | Manajemen + kelas murid milik sekolah, jadwal, absensi; guru dan orang tua ikut aktif. Kuota murid |
+| Gratis selamanya | semua fitur peran itu | – | Dicentang manual di Zui Admin |
 
-- **Percobaan:** 14 hari **semua fitur** (termasuk membuat grup keluarga dan kelas sekolah; `planActive` di `firestore.rules`) sejak akun dibuat, paling awal 23 Okt 2026. Setelah itu akun turun ke **Gratis** (maksimal 30 catatan), tidak hanya-baca. Di Zui Admin, akun Gratis tampil sebagai "kedaluwarsa"; itu hanya label.
+- **Peran menentukan arti paket.** Zui Admin tetap mengenal `starter`/`pro`/`business`; Studiku membacanya sebagai Guru, Orang tua, atau Sekolah sesuai peran akun.
+- **Manajemen atau Terpadu:** sekolah memilih di menu Berlangganan (jumlah dan kuota tercatat di `subreqs.amount` dan `schools/{sid}.minta`). Setelah mengaktifkan **Bisnis** di Zui Admin, admin ZUI masuk ke Studiku dengan akun `admin.zuisystem@gmail.com` (menu **Sekolah**) lalu mencentang **Terpadu** dan mengisi kuota murid. Kuota = jumlah bayar ÷ (Rp5.000 × bulan; 12 bulan dihitung 10). Kuota sekarang hanya ditampilkan (peringatan di dasbor), belum menolak murid baru.
+- **Percobaan:** 14 hari semua fitur untuk semua peran (selama percobaan sekolah dianggap Terpadu), paling awal 23 Okt 2026. Setelah itu fitur berbayar peran itu terkunci: guru tidak bisa membuat kelas, memberi tugas, atau mengisi absensi baru; sekolah tidak bisa membuat kelas; orang tua tidak bisa membuka pantauan kelas anak. Data tetap tersimpan dan murid tetap bisa memakai semuanya.
+- **Grup keluarga** gratis dibuat (hanya menyambungkan orang tua dan anak, maksimal 3 anak).
 - **Tenggang:** paket berbayar masih berlaku 3 hari setelah tanggal berakhir, sama dengan Zui Admin.
-- **Berlangganan:** Pengaturan > Premium > Berlangganan. Pilihan paket mengikuti peran: murid = Pelajar (`starter`), orang tua = Keluarga (`pro`), sekolah = Sekolah dan bimbel (`business`); guru tidak berlangganan dan 1/6/12 bulan, membayar lewat QRIS, lalu mengirim nomor referensi. Permintaan masuk ke **Antrean** Zui Admin; **Aktifkan** langsung mengubah paket di aplikasi. Di aplikasi Android dari Play Store tombol Berlangganan disembunyikan (aturan Google Play Billing); tandanya hanya berlaku selama sesi itu, jadi Chrome biasa di HP yang sama tetap bisa berlangganan.
-- **Chat admin:** dari lembar Premium atau Berlangganan, termasuk foto bukti bayar. Masuk ke **Pesan** Zui Admin.
-- **Harga** awal ada di `PRICE` pada `app.html`. Setelah harga disimpan di **Harga > ZUI STUDIKU** di Zui Admin, aplikasi memakai harga dari sana (`zconfig/pay`). Tabel di `legal.html` dan kartu harga di `index.html` perlu disamakan manual.
-- Batas 30 catatan untuk paket Gratis hanya diatur di tampilan aplikasi. Fitur grup dijaga oleh `firestore.rules`.
+- **Berlangganan:** Pengaturan > Paket > Berlangganan. Murid tidak melihat tombol Berlangganan. Di aplikasi Android dari Play Store tombol Berlangganan disembunyikan (aturan Google Play Billing).
+- **Chat admin:** dari lembar Paket atau Berlangganan, termasuk foto bukti bayar. Masuk ke **Pesan** Zui Admin.
+- **Harga** awal ada di `PRICE` pada `app.html` (starter = Guru, pro = Orang tua, business = Sekolah Manajemen). **Bila harga lama pernah disimpan di Zui Admin > Harga > ZUI STUDIKU, ubah ke harga baru di sana**, karena aplikasi memakai harga dari `zconfig/pay`. Harga Terpadu per murid ada di `TERPADU` pada `app.html`. Tabel di `legal.html` dan kartu harga di `index.html` perlu disamakan manual.
+- **Penghematan server:** aplikasi hanya memuat tugas 180 hari terakhir (semester berjalan) dan semua jadwal, dan memuat ulang otomatis paling cepat tiap 5 menit.
 
 ### Menyambungkan ke Zui Admin
 Belum dipasang. Tambahkan blok ini ke daftar `apps` di `config.js` repo Zui Admin, lalu unggah ulang Zui Admin. Blok aplikasi lain tidak perlu diubah.
@@ -50,8 +55,8 @@ Belum dipasang. Tambahkan blok ini ke daftar `apps` di `config.js` repo Zui Admi
       percobaanHari: 14,
       tenggangHari: 3,
       mulaiPercobaan: "2026-10-23",
-      // starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel. Harus sama dengan PRICE di app.html
-      hargaAwal:    { starter: { 1: 19000, 6: 95000, 12: 149000 }, pro: { 1: 39000, 6: 195000, 12: 390000 }, business: { 1: 150000, 6: 750000, 12: 1500000 } },
+      // starter = Guru, pro = Orang tua, business = Sekolah. Harus sama dengan PRICE di app.html
+      hargaAwal:    { starter: { 1: 25000, 6: 125000, 12: 249000 }, pro: { 1: 10000, 6: 50000, 12: 99000 }, business: { 1: 100000, 6: 500000, 12: 1000000 } },
       hargaAwalMYR: { starter: { 1: 5, 6: 25, 12: 40 }, pro: { 1: 10, 6: 50, 12: 100 }, business: { 1: 40, 6: 200, 12: 400 } },
       firebase: {
         apiKey: "AIzaSyCWEaQJeihJ8o4_72uYtEWWXaj-MlRQsi0",
@@ -94,6 +99,8 @@ Lalu di Firebase Console project sudiku-zui: pastikan `admin.zuisystem.com` ada 
 
 - **Pendaftaran:** wajib, hanya email dan kata sandi (tanpa Google, tanpa mode tanpa akun). Langkah: pilih peran (murid, orang tua, guru, sekolah) > data lengkap sesuai peran (`RF` di `app.html`) > email, kata sandi, ulangi kata sandi (bisa dilihat) > verifikasi email. Data pendaftaran disimpan di perangkat (`sk_rg`) sampai email terverifikasi, lalu ditulis ke `profil/{uid}`. Pengguna lama yang belum punya profil wajib melengkapi data saat masuk. Pengguna lama yang dulu masuk dengan Google memakai **Lupa kata sandi** dengan email yang sama untuk membuat kata sandi.
 - **Menu per peran** (`RTABS`): murid = Beranda, Jadwal, Tugas dan kegiatan, Nilai, Catatan, Rencana, Fokus, Kelasku, Pengumuman, Kalkulator, Translate; orang tua = Pantau anak, Pesan guru, Pengumuman, Keluarga; guru = Beranda, Kelas dan mapel, Beri tugas, Penilaian, Pengumuman, Pesan sekolah, Pesan orang tua, Sekolah; sekolah = Dasbor, Kelas, Guru, Pengumuman, Pesan guru, Program.
+- **Absensi** (`groups/{gid}/absen/{tanggal_mapel}/hadir/{uid}`): guru mengisi Hadir, Izin, Sakit, atau Alpa per pertemuan (menu Absensi). Murid melihat kehadirannya di menu Nilai, orang tua di Pantau anak (rekap 30 hari).
+- **Kelas milik guru:** guru dengan paket Guru (atau yang sekolahnya berpaket Sekolah, field `via`) membuat kelas sendiri, mengisi jadwalnya, dan bisa menghapusnya.
 - **Pantau anak (orang tua):** kelas, semua tugas kelas dengan status (Belum, Selesai, Terlambat, Nilai), tugas yang belum dikerjakan, dan rata-rata nilai per mapel. Data dibaca langsung dari kelas, tanda selesai, dan nilai yang ditulis guru, jadi anak tidak bisa mengubahnya. Supaya orang tua bisa membuka kelas anaknya, aplikasi anak mencatat orang tuanya di tiap kelas (`groups/{gid}/wali/{uidOrtu}`) setelah anak bergabung ke kelas dan ke grup keluarga.
 - **Pesan orang tua dan guru** (`groups/{gid}/chat/{uidOrtu_uidGuru}/msgs`): orang tua memilih guru yang mengajar anaknya; guru melihat daftar orang tua murid di kelas yang ia ajar (pesan baru ditandai •). Hanya keduanya yang bisa membaca. Sekolah tidak bisa membaca, kecuali saat kelas ditutup untuk dihapus (pembersihan).
 - **Pengumuman** (`schools/{sid}/info`): dibuat sekolah untuk semua. Guru membacanya di Pengumuman dan Beranda, murid dari sekolah kelas yang diikuti, orang tua dari sekolah anaknya (`pantau/{uidAnak}.sek`, ditulis aplikasi anak). Bisa dibaca pengguna mana pun yang masuk dan tahu id sekolahnya, jadi jangan berisi data pribadi.

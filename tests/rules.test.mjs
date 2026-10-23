@@ -604,3 +604,92 @@ test('profil bisa diubah sendiri tanpa mengganti peran', async () => {
   await assertSucceeds(prof(M1, 'murid', { kelas: 'Kelas 8', hp: '081299990000' }));
   await assertFails(prof(M1, 'sekolah', { kelas: 'Kelas 8' }));
 });
+
+// ---- Paket per peran: murid gratis, orang tua, guru, sekolah (Manajemen / Terpadu), absensi ----
+
+const ADM = U('adminZui');
+const dbAdm = () => env.authenticatedContext(ADM, { email: 'admin.zuisystem@gmail.com', email_verified: true }).firestore();
+const co = (uid, extra) => env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'companies', uid), { name: 'x', owner: uid, created_at: past, ...extra }));
+const GR = U('guruLes'), K3 = 'KELASLESccccccccccccc'.slice(0, 20);
+async function kelasGuru(uid, gid, code, extra = {}) {
+  const d = db(uid), b = writeBatch(d);
+  b.set(doc(d, 'groups', gid), { name: 'Les Matematika', kind: 'sekolah', ownerId: uid, code, count: 0, createdAt: serverTimestamp(), ...extra });
+  b.set(doc(d, 'codes', code), { gid });
+  return b.commit();
+}
+
+test('grup keluarga gratis: orang tua tanpa paket bisa membuat grup dan anak bergabung', async () => {
+  await co(P, { plan: 'pro', until: past });
+  await assertSucceeds(newClass(P, P, 'FAMGRAT1', 'keluarga'));
+  await assertSucceeds(join(S1, P, 'FAMGRAT1'));
+});
+
+test('guru dengan paket Guru membuat kelas sendiri; paket habis tidak bisa', async () => {
+  await co(GR, { plan: 'starter', until: later });
+  await prof(GR, 'guru');
+  await assertSucceeds(kelasGuru(GR, K3, 'LESGURU1'));
+  await assertSucceeds(setDoc(doc(db(GR), 'groups', K3, 'pengajar', GR), { uid: GR, nama: 'Pak Les', mapel: ['Matematika'], at: serverTimestamp() }));
+  await assertFails(setDoc(doc(db(GR), 'groups', K3, 'pengajar', X), { uid: X, nama: 'x', mapel: ['IPA'], at: serverTimestamp() }));
+  await assertSucceeds(join(S1, K3, 'LESGURU1', 'Andi'));
+  await assertSucceeds(tugasGuru(GR, 'les1', 'Matematika', K3));
+  await co(GR, { plan: 'starter', until: past });
+  await assertFails(tugasGuru(GR, 'les2', 'Matematika', K3));
+  await assertFails(join(S2, K3, 'LESGURU1', 'Budi'));
+  await assertFails(kelasGuru(GR, K2, 'LESGURU2'));
+});
+
+test('guru di sekolah berpaket aktif tidak perlu membayar (via sekolah)', async () => {
+  await siapSekolah();
+  await co(SK, { plan: 'business', until: later });
+  await co(G1, { plan: 'starter', until: past });
+  await assertFails(kelasGuru(G1, K3, 'VIASEK01'));
+  await assertSucceeds(kelasGuru(G1, K3, 'VIASEK02', { via: SK }));
+  await assertFails(kelasGuru(X, K2, 'VIASEK03', { via: SK }));
+});
+
+test('sekolah Manajemen tidak bisa membuat kelas murid; Terpadu ditetapkan admin ZUI', async () => {
+  await prof(SK, 'sekolah'); await sekolah();
+  await co(SK, { plan: 'business', until: later });
+  await assertFails(kelasSekolah(KLS, 'TERPADU1'));
+  await assertFails(updateDoc(doc(db(SK), 'schools', SK), { terpadu: true }));
+  await assertSucceeds(updateDoc(doc(db(SK), 'schools', SK), { minta: { terpadu: true, kuota: 300, at: serverTimestamp() } }));
+  await assertSucceeds(getDocs(collection(dbAdm(), 'schools')));
+  await assertFails(getDocs(collection(db(X), 'schools')));
+  await assertSucceeds(updateDoc(doc(dbAdm(), 'schools', SK), { terpadu: true, kuota: 300 }));
+  await assertSucceeds(kelasSekolah(KLS, 'TERPADU2'));
+});
+
+test('pantauan orang tua: perlu paket Orang tua, kecuali kelasnya milik sekolah Terpadu', async () => {
+  await siapOrtu();
+  await tugasGuru(G1, 'mtk1', 'Matematika');
+  await wali(M1, OR);
+  await co(OR, { plan: 'pro', until: past });
+  await co(SK, { plan: 'business', until: later });
+  await assertFails(getDocs(collection(db(OR), 'groups', KLS, 'items')));
+  await assertFails(chatMsg(OR, OR, G1, 'ortu'));
+  await assertSucceeds(updateDoc(doc(dbAdm(), 'schools', SK), { terpadu: true, kuota: 100 }));
+  await assertSucceeds(getDocs(collection(db(OR), 'groups', KLS, 'items')));
+  await assertSucceeds(chatMsg(OR, OR, G1, 'ortu'));
+  await updateDoc(doc(dbAdm(), 'schools', SK), { terpadu: false, kuota: 0 });
+  await co(OR, { plan: 'pro', until: later });
+  await assertSucceeds(getDocs(collection(db(OR), 'groups', KLS, 'items')));
+});
+
+test('absensi: guru mencatat, murid melihat miliknya, orang tua melihat anaknya', async () => {
+  await siapOrtu();
+  const sesi = (uid, id = 's1') => setDoc(doc(db(uid), 'groups', KLS, 'absen', id), { tgl: '2026-10-23', mapel: 'Matematika', by: uid, at: serverTimestamp() });
+  const hadir = (uid, m, s = 'H', id = 's1') => setDoc(doc(db(uid), 'groups', KLS, 'absen', id, 'hadir', m), { uid: m, s, tgl: '2026-10-23', mapel: 'Matematika', at: serverTimestamp() });
+  await assertFails(sesi(M1));
+  await assertSucceeds(sesi(G1));
+  await assertSucceeds(hadir(G1, M1, 'S'));
+  await assertSucceeds(hadir(G1, M2, 'A'));
+  await assertFails(hadir(G1, X));
+  await assertFails(hadir(G1, M1, 'T'));
+  await assertFails(hadir(M1, M1, 'H'));
+  await assertSucceeds(getDoc(doc(db(M1), 'groups', KLS, 'absen', 's1', 'hadir', M1)));
+  await assertFails(getDoc(doc(db(M1), 'groups', KLS, 'absen', 's1', 'hadir', M2)));
+  const r = await assertSucceeds(getDocs(query(collectionGroup(db(OR), 'hadir'), where('uid', '==', M1))));
+  if (r.size !== 1 || r.docs[0].data().s !== 'S') throw new Error('hadir anak');
+  await assertFails(getDocs(query(collectionGroup(db(OR), 'hadir'), where('uid', '==', M2))));
+  await assertSucceeds(getDocs(collection(db(SK), 'groups', KLS, 'absen', 's1', 'hadir')));
+});
