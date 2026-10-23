@@ -1,4 +1,4 @@
-# Studi Kita: panduan pasang
+# ZUI Studiku: panduan pasang
 
 ## 1. Supabase
 1. Buat project di supabase.com, lalu buka **SQL Editor**, tempel isi `supabase.sql`, klik Run.
@@ -25,17 +25,17 @@
 - Aktifkan paket pelanggan lewat SQL Editor dengan nilai `plan` = `keluarga` atau `sekolah` (contoh ada di komentar SQL).
 - **Keluarga:** orang tua membuat grup di tab Grup dan membagikan kode ke anak (maksimal 3 anak). Anak yang bergabung otomatis mendapat fitur Premium selama paket orang tua aktif. Orang tua hanya melihat jadwal, kegiatan, rencana, dan statistik fokus anak, bukan catatan pelajarannya.
 - **Sekolah:** guru membuat kelas, membagikan kode ke siswa, lalu menambah tugas atau jadwal kelas. Siswa melihatnya di tab Grup. Guru tidak bisa melihat data pribadi siswa.
-- Anak di bawah umur: sebelum dipakai publik, siapkan kebijakan privasi dan persetujuan orang tua.
+- Anak di bawah umur: aturan persetujuan orang tua ada di `legal.html` (Syarat bagian 3, Privasi bagian 7).
 
 ## 5. Play Store
-1. Unggah SEMUA file di folder ini ke GitHub (termasuk `.nojekyll` dan folder `.well-known`). Ganti `[TANGGAL]`, `[NAMA...]`, `[EMAIL]` di `privacy.html`. Jalankan bagian "Hapus akun" di `supabase.sql`.
+1. Unggah SEMUA file di folder ini ke GitHub (termasuk `.nojekyll` dan folder `.well-known`). Dokumen legal (Syarat Layanan, Kebijakan Privasi, Pengembalian Dana, Kontak) ada di `legal.html`; `privacy.html` mengarah ke bagian privasinya. Jalankan bagian "Hapus akun" di `supabase.sql`.
 2. Buka pwabuilder.com, masukkan alamat domainmu, pilih paket Android, isi package name (misal `com.domainmu.studikita`), lalu unduh file `.aab` dan kunci penandatanganannya. Simpan kunci itu baik-baik.
 3. Di Play Console aktifkan Play App Signing, lalu salin *SHA-256 fingerprint* ke `.well-known/assetlinks.json` (dan package name yang sama), unggah ulang ke GitHub. Tanpa ini aplikasi tampil dengan bilah alamat browser.
-4. Buat aplikasi di Play Console, unggah `.aab` ke jalur Closed testing, isi: kebijakan privasi (alamat `privacy.html`), Data safety, content rating, target audiens, ikon 512 px, feature graphic 1024x500, dan minimal 2 screenshot.
+4. Buat aplikasi di Play Console, unggah `.aab` ke jalur Closed testing, isi: kebijakan privasi (alamat `legal.html#privasi`), Data safety, content rating, target audiens, ikon 512 px, feature graphic 1024x500, dan minimal 2 screenshot.
 
 ## 6. Halaman depan (landing)
 - `index.html` sekarang halaman depan (fitur, harga, FAQ). Aplikasinya ada di `app.html`; tombol Masuk dan Mulai gratis mengarah ke sana. Aplikasi Android langsung membuka `app.html`.
-- Ganti `EMAIL@DOMAINMU.COM` di `index.html`. Setelah aplikasi tayang di Play Store, isi `PLAY_URL` di bagian bawah `index.html` agar tombol unduh muncul.
+- Setelah aplikasi tayang di Play Store, isi `PLAY_URL` di bagian bawah `index.html` agar tombol unduh muncul.
 - Di Supabase (Authentication > URL Configuration) tambahkan `https://domainmu.com/**` ke Redirect URLs agar login Google dan verifikasi email kembali ke `app.html`.
 - Isi `SB_URL` dan `SB_KEY` di `app.html` (bukan `index.html`).
 
@@ -43,3 +43,7 @@
 - Tombol **Berlangganan** selalu tampil di versi web (Pengaturan > Lihat Premium) untuk pengguna yang belum Premium. Di aplikasi Play Store tombol ini disembunyikan.
 - Isi `WA` di `app.html` dengan nomor WhatsApp-mu (format 628xxxxxxxxxx). Tombol akan membuka WhatsApp dengan pesan berisi ID akun pengguna, yang kamu pakai untuk mengaktifkan Premium lewat SQL Editor.
 - Jika kamu sudah punya tautan pembayaran, isi `UPGRADE_URL` dan tombol akan membukanya.
+
+## 8. Dokumen legal
+- `legal.html` berisi Syarat Layanan (`#syarat`), Kebijakan Privasi (`#privasi`), Kebijakan Pengembalian Dana (`#refund`), serta Kontak & Alamat (`#kontak`).
+- Tabel harga di Kebijakan Pengembalian Dana disalin dari `index.html` dan fungsi `up()` di `app.html`. Bila harga atau fitur berubah, samakan juga `legal.html`, lalu perbarui tanggal berlakunya.
