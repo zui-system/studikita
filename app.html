@@ -89,6 +89,8 @@ main>*{max-width:780px;margin-left:auto;margin-right:auto}
 var FBC={apiKey:'AIzaSyCWEaQJeihJ8o4_72uYtEWWXaj-MlRQsi0',authDomain:'sudiku-zui.firebaseapp.com',projectId:'sudiku-zui',storageBucket:'sudiku-zui.firebasestorage.app',messagingSenderId:'127632344691',appId:'1:127632344691:web:2e706f39acd1660c260c06'};
 var PLAY=false;try{PLAY=/android-app:/.test(document.referrer)||localStorage.getItem('sk_play')==='1';if(PLAY)localStorage.setItem('sk_play','1')}catch(e){}
 var PREM=false,PLN='free',GID=null,CI=[],MK={},OG=[],EMAIL='',CO=null,HEAD=null,MG=[],CHU=null,SIMG='';
+/* sisa sesi Supabase (versi lama sebelum pindah ke Firebase) dihapus dari perangkat */
+try{Object.keys(localStorage).forEach(function(k){if(/^sb-/.test(k))localStorage.removeItem(k)})}catch(e){}
 var fa=null,db=null;try{firebase.initializeApp(FBC);fa=firebase.auth();db=firebase.firestore()}catch(e){}
 function SV(){return firebase.firestore.FieldValue.serverTimestamp()}
 function tms(t){return t&&t.toMillis?t.toMillis():0}
@@ -293,14 +295,17 @@ function gate(){$('#nav').innerHTML='';$('#fabw').innerHTML='';$('#v').innerHTML
 function lokal(){S.mode='local';save();go('home')}
 function cred(){return{email:$('#ge').value.trim(),password:$('#gp').value}}
 function okUser(u){return u&&(u.emailVerified||u.providerData.some(function(p){return p.providerId==='google.com'}))}
-async function masuk(){var c=cred();if(!c.email||!c.password){gm('Isi email dan kata sandi.');return}gm('Memeriksa...');try{var r=await fa.signInWithEmailAndPassword(c.email,c.password);if(!okUser(r.user)){try{await r.user.sendEmailVerification({url:location.origin+location.pathname})}catch(x){}await fa.signOut();gm('Email belum diverifikasi. Kami mengirim tautan verifikasi ke emailmu. Klik tautannya, lalu Masuk.')}}catch(e){gm(er(e))}}
+async function masuk(){var c=cred();if(!c.email||!c.password){gm('Isi email dan kata sandi.');return}gm('Memeriksa...');try{var r=await fa.signInWithEmailAndPassword(c.email,c.password);if(!okUser(r.user)){try{await r.user.sendEmailVerification({url:location.origin+location.pathname})}catch(x){}await fa.signOut();gm('Email belum diverifikasi. Kami mengirim tautan verifikasi ke emailmu. Klik tautannya, lalu Masuk.')}else gm('Memuat data...')}catch(e){gm(er(e))}}
 async function daftar(){var c=cred();if(!c.email||c.password.length<6){gm('Isi email dan kata sandi minimal 6 karakter.');return}gm('Mendaftarkan...');try{var r=await fa.createUserWithEmailAndPassword(c.email,c.password);try{await r.user.sendEmailVerification({url:location.origin+location.pathname})}catch(x){}await fa.signOut();gm('Kami mengirim email verifikasi. Klik tautan di email, lalu Masuk.')}catch(e){gm(er(e))}}
 function gug(){var p=new firebase.auth.GoogleAuthProvider();fa.signInWithPopup(p).catch(function(e){var c=e&&e.code;if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment')fa.signInWithRedirect(p);else gm(er(e))})}
 async function lupa(){var e=$('#ge').value.trim();if(!e){gm('Isi email dulu, lalu tekan Lupa kata sandi.');return}try{await fa.sendPasswordResetEmail(e,{url:location.origin+location.pathname});gm('Tautan reset kata sandi dikirim ke emailmu.')}catch(x){gm(er(x))}}
 async function ensureCo(u){var ref=db.doc('companies/'+UID),d=await ref.get(),nm=coName().slice(0,120);if(d.exists){if(d.data().name!==nm)ref.update({name:nm}).catch(function(){});return}var b=db.batch();b.set(ref,{name:nm,owner:UID,created_at:SV()});b.set(db.doc('companies/'+UID+'/members/'+UID),{role:'owner',email:String(u.email||'').toLowerCase(),name:nm});await b.commit()}
 async function pull(u){UID=u.uid;EMAIL=u.email||'';try{var r=await db.doc('users/'+UID).get();if(r.exists&&r.data().data)S=Object.assign(mk(),r.data().data);S.mode='cloud';await ensureCo(u)}catch(e){console.warn(e)}await plan();await ci();save();th();ll();go(tab);remind()}
 async function keluar(){clearChat();if(fa)await fa.signOut();UID=null;EMAIL='';CO=null;HEAD=null;MG=[];PREM=false;PLN='free';CI=[];S=mk();try{localStorage.removeItem('sk')}catch(e){}th();ll();cl();go('home')}
-function init(){if(!fa)return;fa.getRedirectResult().catch(function(e){gm(er(e))});fa.onAuthStateChanged(function(u){if(okUser(u)&&UID!==u.uid)pull(u)})}
+/* sesi lama tanpa akun Firebase (mis. dari versi Supabase, atau sesi yang sudah berakhir): kembali ke layar masuk,
+   data di perangkat tetap disimpan dan ikut diunggah bila akun barunya belum punya data online */
+function init(){if(!fa)return;fa.getRedirectResult().catch(function(e){gm(er(e))});fa.onAuthStateChanged(function(u){if(okUser(u)){if(UID!==u.uid)pull(u)}
+else if(S.mode==='cloud'&&!UID){S.mode='';save();go('home');gm('Sesi masukmu sudah berakhir. Masuk lagi, atau Daftar bila belum punya akun. Data di perangkat ini akan ikut tersimpan ke akunmu.')}})}
 /* pengingat lokal: notifikasi tugas dan ujian yang jatuh tempo hari ini atau besok, muncul saat aplikasi dibuka
    (dan tiap 30 menit selama terbuka). Tanpa server dan tanpa data tambahan di Firestore. */
 function ntOk(){return'Notification' in window&&Notification.permission==='granted'}
@@ -328,5 +333,8 @@ $('#fabw').innerHTML=F[t]&&t!=='home'&&t!=='fokus'?'<button class="fab" aria-lab
 var a=$('#nav .on');if(a&&a.scrollIntoView)a.scrollIntoView({inline:'center',block:'nearest'});if(t==='catatan')fl();if(t==='grup')gload();if(t==='home'||t==='jadwal')cr();if(t==='fokus')ut();window.scrollTo(0,0);ap()}
 $('#ov').addEventListener('click',function(e){if(e.target===this)cl()});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
-th();ll();go('home');init();remind();
+th();ll();
+/* akun online: tunggu status masuk Firebase dulu supaya layar tidak berpindah-pindah (berkedip) */
+if(fa&&S.mode==='cloud'){$('#v').innerHTML='<div class="empty" style="margin-top:35vh">Memuat akun...</div>';setTimeout(function(){if(!UID&&S.mode==='cloud')go('home')},5000)}else go('home');
+init();remind();
 </script></body></html>

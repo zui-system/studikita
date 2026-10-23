@@ -17,7 +17,8 @@ Project: **sudiku-zui** (organisasi info-zuisystem-org), terpisah dari aplikasi 
 2. **Authentication > Settings > Authorized domains:** tambahkan `studikita.zuisystem.com` dan `admin.zuisystem.com`.
 3. **Firestore Database:** buat database (mode production), lalu terbitkan aturan dan indeks dengan `npm i -g firebase-tools`, `firebase login`, dan `firebase deploy --only firestore` dari folder ini. Cara manual: tempel isi `firestore.rules` di **Firestore Database > Rules** lalu **Publish**, dan buat indeks **collection group** `anggota`, field `uid`, Ascending, serta indeks **collection group** `selesai`, field `uid`, Ascending (atau klik tautan di pesan error pertama di console browser).
 4. Pendaftaran email wajib verifikasi: aplikasi mengirim email verifikasi dan baru mengizinkan masuk setelah tautannya diklik. Akun Google langsung bisa masuk.
-5. (Opsional) **Authentication > Templates:** ganti nama pengirim dan bahasa email verifikasi serta reset kata sandi menjadi Bahasa Indonesia.
+5. **Supabase sudah tidak dipakai.** Versi lama Studiku memakai Supabase (project `nparspjrfkrwgxujdyzy`). Kode sekarang tidak memuat atau menghubungi Supabase sama sekali. Saat dibuka, aplikasi menghapus sisa sesi Supabase (`sb-*`) dari browser. Pengguna lama yang masih tercatat "akun aktif" tetapi belum punya sesi Firebase dibawa ke layar masuk; data di perangkatnya ikut tersimpan ke akun Firebase yang baru bila akun itu belum punya data online. Project Supabase lama bisa di-pause atau dihapus dari dashboard Supabase setelah datanya tidak diperlukan.
+6. (Opsional) **Authentication > Templates:** ganti nama pengirim dan bahasa email verifikasi serta reset kata sandi menjadi Bahasa Indonesia.
 
 ## 2. Paket dan Zui Admin
 Studiku memakai pola **standar** Zui Admin, sama dengan ZUI KONTRAKTOR, ZUI JURNAL, dan ZUI TO-DO. Satu pengguna = satu "perusahaan" (ID = UID).
