@@ -47,3 +47,38 @@
 ## 8. Dokumen legal
 - `legal.html` berisi Syarat Layanan (`#syarat`), Kebijakan Privasi (`#privasi`), Kebijakan Pengembalian Dana (`#refund`), serta Kontak & Alamat (`#kontak`).
 - Tabel harga di Kebijakan Pengembalian Dana disalin dari `index.html` dan fungsi `up()` di `app.html`. Bila harga atau fitur berubah, samakan juga `legal.html`, lalu perbarui tanggal berlakunya.
+
+## 9. Firebase (pengganti Supabase)
+Aturan keamanan ada di `firestore.rules`, indeks di `firestore.indexes.json`, dan `firebase.json` untuk deploy.
+
+### Pasang
+1. Buat project di console.firebase.google.com, lalu aktifkan **Authentication** (Email/Password dan Google) dan **Cloud Firestore**.
+2. **Authentication > Settings > Authorized domains**: tambahkan domainmu (misal `studikita.zuisystem.com`).
+3. Deploy aturan dan indeks: `npm i -g firebase-tools`, `firebase login`, lalu `firebase deploy --only firestore --project ID_PROJECT`. Bisa juga tempel isi `firestore.rules` di **Firestore > Rules** lalu Publish, dan buat indeks collection group `members.uid` dari pesan error pertama yang muncul.
+4. Semua akses butuh email terverifikasi. Akun Google otomatis terverifikasi. Untuk email/kata sandi, kirim `sendEmailVerification()` setelah daftar dan jangan izinkan masuk sebelum terverifikasi.
+
+### Struktur data
+| Lokasi | Isi | Siapa yang bisa |
+|---|---|---|
+| `users/{uid}` | `{data: S, updatedAt}`, seluruh data aplikasi (pengganti `user_data`) | baca/tulis: pemilik |
+| `pantau/{uid}` | `{nick, jadwal, kegiatan, rencana, sesi, mnt, updatedAt}`, tanpa catatan | tulis: pemilik; baca: pemilik dan orang tua di grup keluarga |
+| `plans/{uid}` | `{plan: 'free'/'pelajar'/'keluarga'/'sekolah', until: timestamp, note}` | tulis: admin; baca: pemilik dan anggota grupnya |
+| `codes/{KODE}` | `{gid}` | buka satu per satu, tidak bisa didaftar |
+| `groups/{uidPemilik}` | `{name, kind, ownerId, code, count, createdAt}`, satu grup per pemilik | pemilik dan anggota |
+| `groups/{gid}/members/{uid}` | `{uid, code, joinedAt}` | anggota itu sendiri dan pemilik grup |
+| `groups/{gid}/items/{id}` | `{kind: 'tugas'/'jadwal', data, createdAt}` (pengganti `class_items`) | tulis: guru pemilik; baca: anggota |
+
+### Cara pakai di aplikasi (pengganti RPC Supabase)
+- **my_plan:** baca `plans/{uid}`; Premium bila `plan != 'free'` dan `until` belum lewat. Anak juga Premium bila tergabung di grup keluarga yang paket pemiliknya aktif: cari lewat `collectionGroup('members').where('uid','==',uid)`, lalu baca `plans/{gid}`.
+- **create_group:** satu batch: `set groups/{uid}` (`count: 0`, `createdAt: serverTimestamp()`) dan `set codes/{KODE}` (`{gid: uid}`). Kode minimal 8 karakter acak; bila gagal karena kode sudah dipakai, buat kode lain.
+- **join_group:** baca `codes/{KODE}`, lalu satu batch: `set groups/{gid}/members/{uid}` (`{uid, code, joinedAt: serverTimestamp()}`) dan `update groups/{gid}` (`count: increment(1)`). Grup keluarga maksimal 3 anak, dan paket pemilik harus aktif.
+- **Keluar grup:** satu batch: `delete members/{uid}` dan `update groups/{gid}` (`count: increment(-1)`).
+- **family_view:** orang tua membaca `groups/{uid}/members`, lalu `pantau/{uidAnak}` untuk tiap anak. Aplikasi menulis `pantau/{uid}` setiap kali `users/{uid}` disimpan.
+- **delete_account:** hapus `users`, `pantau`, dan `plans` milik sendiri, keluar dari semua grup, dan bila punya grup: hapus `groups/{uid}` dan `codes/{KODE}` dulu, lalu anggota dan item di bawahnya. Terakhir `auth.currentUser.delete()`.
+
+### Mengaktifkan paket
+Di **Firestore > Data**, buat atau ubah dokumen `plans/{uid}`: `plan` (string) dan `until` (timestamp tanggal berakhir). Konsol Firebase tidak terikat aturan. Untuk panel admin di aplikasi, beri akun admin custom claim `admin: true` lewat Admin SDK.
+
+### Catatan
+- Satu dokumen Firestore maksimal 1 MB. Bila catatan pengguna sangat banyak, pindahkan catatan ke subkoleksi `users/{uid}/catatan`.
+- Setelah aplikasi benar-benar pindah ke Firebase, perbarui `legal.html` (Kebijakan Privasi bagian 1, 3, dan 4): ganti Supabase dengan Firebase Authentication dan Cloud Firestore dari Google.
