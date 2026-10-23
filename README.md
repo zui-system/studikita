@@ -1,96 +1,99 @@
 # ZUI Studiku: panduan pasang
 
-## 1. Supabase
-1. Buat project di supabase.com, lalu buka **SQL Editor**, tempel isi `supabase.sql`, klik Run.
-2. **Project Settings > API**: salin *Project URL* dan *anon public key*, tempel ke `SB_URL` dan `SB_KEY` di bagian atas `<script>` pada `index.html`. Kunci anon memang boleh publik karena data dilindungi aturan RLS dari langkah 1. Jangan pernah memakai kunci `service_role` di sini.
-3. **Authentication > Providers > Email**: pastikan *Confirm email* aktif (ini yang membuat daftar memakai verifikasi email).
-4. **Authentication > URL Configuration**: isi *Site URL* dengan alamat domainmu (https://domainmu.com) dan tambahkan alamat yang sama di *Redirect URLs*.
-5. **Login Google**: di Google Cloud Console buat *OAuth client ID* (Web application). Isi *Authorized redirect URI* dengan alamat callback yang tertera di Supabase pada **Authentication > Providers > Google**. Salin Client ID dan Client Secret ke halaman Supabase itu, lalu aktifkan.
-6. Untuk email verifikasi yang stabil di banyak pengguna, atur SMTP sendiri di **Authentication > SMTP Settings**, karena email bawaan Supabase dibatasi jumlahnya.
+| File | Fungsi |
+|---|---|
+| `index.html` | Halaman depan (fitur, harga, FAQ) |
+| `app.html` | Aplikasinya. Aplikasi Android juga membuka halaman ini |
+| `legal.html` | Syarat Layanan (`#syarat`), Kebijakan Privasi (`#privasi`), Pengembalian Dana (`#refund`), Kontak & Alamat (`#kontak`) |
+| `privacy.html` | Mengarah ke `legal.html#privasi` (alamat lama untuk Play Store) |
+| `firestore.rules`, `firestore.indexes.json` | Aturan dan indeks Cloud Firestore |
+| `firebase.json`, `.firebaserc` | Untuk `firebase deploy --only firestore` ke project `sudiku-zui` |
 
-## 2. GitHub Pages dan domain
-1. Buat repo di GitHub, unggah `index.html` (dan file lain di folder ini) ke branch `main`.
-2. **Settings > Pages**: Source = *Deploy from a branch*, branch `main`, folder `/ (root)`.
-3. Di **Custom domain** isi domainmu. Di DNS domain: untuk subdomain (misal belajar.domainmu.com) buat record CNAME ke `USERNAME.github.io`; untuk domain utama buat record A ke 185.199.108.153, 185.199.109.153, 185.199.110.153, 185.199.111.153.
-4. Centang **Enforce HTTPS** setelah sertifikat aktif.
+## 1. Firebase
+Project: **sudiku-zui** (organisasi info-zuisystem-org), terpisah dari aplikasi Zui lain. Config web sudah terpasang di `FBC` pada `app.html` (boleh publik, keamanan dijaga oleh `firestore.rules`).
+1. **Authentication > Sign-in method:** aktifkan **Email/Password** dan **Google**.
+2. **Authentication > Settings > Authorized domains:** tambahkan `studikita.zuisystem.com` dan `admin.zuisystem.com`.
+3. **Firestore Database:** buat database (mode production), lalu terbitkan aturan dan indeks dengan `npm i -g firebase-tools`, `firebase login`, dan `firebase deploy --only firestore` dari folder ini. Cara manual: tempel isi `firestore.rules` di **Firestore Database > Rules** lalu **Publish**, dan buat indeks **collection group** `anggota`, field `uid`, Ascending (atau klik tautan di pesan error pertama di console browser).
+4. Pendaftaran email wajib verifikasi: aplikasi mengirim email verifikasi dan baru mengizinkan masuk setelah tautannya diklik. Akun Google langsung bisa masuk.
+5. (Opsional) **Authentication > Templates:** ganti nama pengirim dan bahasa email verifikasi serta reset kata sandi menjadi Bahasa Indonesia.
 
-## 3. Paket premium
-- Jalankan ulang `supabase.sql` bagian tabel `plans` (bagian paling bawah).
-- Isi `UPGRADE_URL` di `index.html` dengan tautan pembayaran atau WhatsApp-mu. Selama kosong, tombol Upgrade tidak muncul.
-- Aktifkan premium untuk seorang pengguna lewat SQL Editor (contoh ada di bagian bawah `supabase.sql`). Untuk otomatis setelah bayar, nanti dibuat Edge Function yang dipanggil Midtrans atau Xendit.
-- Batas 30 catatan untuk paket gratis hanya diatur di tampilan aplikasi. Pengguna yang paham teknis bisa melewatinya. Untuk batas yang tegas, aturan itu harus dipindah ke server.
+## 2. Paket dan Zui Admin
+Studiku memakai pola **standar** Zui Admin, sama dengan ZUI KONTRAKTOR, ZUI JURNAL, dan ZUI TO-DO. Satu pengguna = satu "perusahaan" (ID = UID).
 
-## 4. Paket Keluarga dan Sekolah
-- Jalankan ulang bagian paling bawah `supabase.sql` ("Paket Keluarga dan Sekolah").
-- Aktifkan paket pelanggan lewat SQL Editor dengan nilai `plan` = `keluarga` atau `sekolah` (contoh ada di komentar SQL).
-- **Keluarga:** orang tua membuat grup di tab Grup dan membagikan kode ke anak (maksimal 3 anak). Anak yang bergabung otomatis mendapat fitur Premium selama paket orang tua aktif. Orang tua hanya melihat jadwal, kegiatan, rencana, dan statistik fokus anak, bukan catatan pelajarannya.
-- **Sekolah:** guru membuat kelas, membagikan kode ke siswa, lalu menambah tugas atau jadwal kelas. Siswa melihatnya di tab Grup. Guru tidak bisa melihat data pribadi siswa.
-- Anak di bawah umur: aturan persetujuan orang tua ada di `legal.html` (Syarat bagian 3, Privasi bagian 7).
+| Zui Admin | Studiku | Isi |
+|---|---|---|
+| Starter | Pelajar | Catatan tanpa batas, PDF, statistik fokus, warna tema |
+| Pro | Keluarga | Fitur Pelajar + grup keluarga sampai 3 anak (anak ikut Premium) |
+| Bisnis | Sekolah dan bimbel | Kelas dengan tugas dan jadwal bersama. Tidak bisa dipesan dari aplikasi; aktifkan manual di Zui Admin (Pelanggan > Perpanjang, pilih Bisnis) setelah ada kesepakatan |
+| Gratis selamanya | semua fitur | Dicentang manual di Zui Admin |
 
-## 5. Play Store
-1. Unggah SEMUA file di folder ini ke GitHub (termasuk `.nojekyll` dan folder `.well-known`). Dokumen legal (Syarat Layanan, Kebijakan Privasi, Pengembalian Dana, Kontak) ada di `legal.html`; `privacy.html` mengarah ke bagian privasinya. Jalankan bagian "Hapus akun" di `supabase.sql`.
-2. Buka pwabuilder.com, masukkan alamat domainmu, pilih paket Android, isi package name (misal `com.domainmu.studikita`), lalu unduh file `.aab` dan kunci penandatanganannya. Simpan kunci itu baik-baik.
-3. Di Play Console aktifkan Play App Signing, lalu salin *SHA-256 fingerprint* ke `.well-known/assetlinks.json` (dan package name yang sama), unggah ulang ke GitHub. Tanpa ini aplikasi tampil dengan bilah alamat browser.
-4. Buat aplikasi di Play Console, unggah `.aab` ke jalur Closed testing, isi: kebijakan privasi (alamat `legal.html#privasi`), Data safety, content rating, target audiens, ikon 512 px, feature graphic 1024x500, dan minimal 2 screenshot.
+- **Percobaan:** 14 hari Premium (fitur Pelajar) sejak akun dibuat, paling awal 23 Okt 2026. Setelah itu akun turun ke **Gratis** (maksimal 30 catatan), tidak hanya-baca. Di Zui Admin, akun Gratis tampil sebagai "kedaluwarsa"; itu hanya label.
+- **Tenggang:** paket berbayar masih berlaku 3 hari setelah tanggal berakhir, sama dengan Zui Admin.
+- **Berlangganan:** Pengaturan > Premium > Berlangganan. Pengguna memilih Pelajar atau Keluarga dan 1/6/12 bulan, membayar lewat QRIS, lalu mengirim nomor referensi. Permintaan masuk ke **Antrean** Zui Admin; **Aktifkan** langsung mengubah paket di aplikasi. Di aplikasi Android dari Play Store tombol Berlangganan disembunyikan.
+- **Chat admin:** dari lembar Premium atau Berlangganan, termasuk foto bukti bayar. Masuk ke **Pesan** Zui Admin.
+- **Harga** awal ada di `PRICE` pada `app.html`. Setelah harga disimpan di **Harga > ZUI STUDIKU** di Zui Admin, aplikasi memakai harga dari sana (`zconfig/pay`). Tabel di `legal.html` dan kartu harga di `index.html` perlu disamakan manual.
+- Batas 30 catatan untuk paket Gratis hanya diatur di tampilan aplikasi. Fitur grup dijaga oleh `firestore.rules`.
 
-## 6. Halaman depan (landing)
-- `index.html` sekarang halaman depan (fitur, harga, FAQ). Aplikasinya ada di `app.html`; tombol Masuk dan Mulai gratis mengarah ke sana. Aplikasi Android langsung membuka `app.html`.
-- Setelah aplikasi tayang di Play Store, isi `PLAY_URL` di bagian bawah `index.html` agar tombol unduh muncul.
-- Di Supabase (Authentication > URL Configuration) tambahkan `https://domainmu.com/**` ke Redirect URLs agar login Google dan verifikasi email kembali ke `app.html`.
-- Isi `SB_URL` dan `SB_KEY` di `app.html` (bukan `index.html`).
-
-## 7. Tombol Berlangganan
-- Tombol **Berlangganan** selalu tampil di versi web (Pengaturan > Lihat Premium) untuk pengguna yang belum Premium. Di aplikasi Play Store tombol ini disembunyikan.
-- Isi `WA` di `app.html` dengan nomor WhatsApp-mu (format 628xxxxxxxxxx). Tombol akan membuka WhatsApp dengan pesan berisi ID akun pengguna, yang kamu pakai untuk mengaktifkan Premium lewat SQL Editor.
-- Jika kamu sudah punya tautan pembayaran, isi `UPGRADE_URL` dan tombol akan membukanya.
-
-## 8. Dokumen legal
-- `legal.html` berisi Syarat Layanan (`#syarat`), Kebijakan Privasi (`#privasi`), Kebijakan Pengembalian Dana (`#refund`), serta Kontak & Alamat (`#kontak`).
-- Tabel harga di Kebijakan Pengembalian Dana disalin dari `index.html` dan fungsi `up()` di `app.html`. Bila harga atau fitur berubah, samakan juga `legal.html`, lalu perbarui tanggal berlakunya.
-
-## 9. Firebase (pengganti Supabase)
-Aplikasi masih memakai Supabase sampai `app.html` dipindah ke Firebase. Aturan keamanan ada di `firestore.rules`, indeks di `firestore.indexes.json`, dan `firebase.json` untuk deploy.
-
-### Pasang
-Project Firebase ZUI Studiku: **sudiku-zui** (di bawah organisasi info-zuisystem-org), terpisah dari ZUI To-Do dan aplikasi Zui lain. `.firebaserc` sudah memakai project ini.
-1. Firebase Console project sudiku-zui: aktifkan **Authentication** (Email/Password dan Google) dan **Cloud Firestore**.
-2. **Authentication > Settings > Authorized domains**: tambahkan `studikita.zuisystem.com`.
-3. Terbitkan aturan dan indeks: `npm i -g firebase-tools`, `firebase login`, lalu `firebase deploy --only firestore` dari folder ini. Bisa juga tempel isi `firestore.rules` di **Firestore Database > Rules** lalu Publish, dan buat indeks collection group `members`, field `uid`, Ascending (atau klik tautan di pesan error pertama di console browser).
-4. Semua akses butuh email terverifikasi. Akun Google otomatis terverifikasi. Untuk email/kata sandi, kirim `sendEmailVerification()` setelah daftar dan jangan izinkan masuk sebelum terverifikasi.
-5. Config web untuk `app.html` (boleh publik, keamanan dijaga oleh `firestore.rules`):
+### Menyambungkan ke Zui Admin
+Belum dipasang. Tambahkan blok ini ke daftar `apps` di `config.js` repo Zui Admin, lalu unggah ulang Zui Admin. Blok aplikasi lain tidak perlu diubah.
 ```js
-const firebaseConfig = {
-  apiKey: "AIzaSyCWEaQJeihJ8o4_72uYtEWWXaj-MlRQsi0",
-  authDomain: "sudiku-zui.firebaseapp.com",
-  projectId: "sudiku-zui",
-  storageBucket: "sudiku-zui.firebasestorage.app",
-  messagingSenderId: "127632344691",
-  appId: "1:127632344691:web:2e706f39acd1660c260c06"
-};
+    {
+      id: "stu",
+      nama: "ZUI STUDIKU",
+      jenis: "standar",
+      warna: "#7A5CFF",
+      url: "https://studikita.zuisystem.com",
+      // samakan dengan TRIAL, GRACE, LAUNCH di app.html dan planActive di firestore.rules ZUI STUDIKU
+      percobaanHari: 14,
+      tenggangHari: 3,
+      mulaiPercobaan: "2026-10-23",
+      // starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel. Harus sama dengan PRICE di app.html
+      hargaAwal:    { starter: { 1: 19000, 6: 95000, 12: 149000 }, pro: { 1: 39000, 6: 195000, 12: 390000 }, business: { 1: 150000, 6: 750000, 12: 1500000 } },
+      hargaAwalMYR: { starter: { 1: 5, 6: 25, 12: 40 }, pro: { 1: 10, 6: 50, 12: 100 }, business: { 1: 40, 6: 200, 12: 400 } },
+      firebase: {
+        apiKey: "AIzaSyCWEaQJeihJ8o4_72uYtEWWXaj-MlRQsi0",
+        authDomain: "sudiku-zui.firebaseapp.com",
+        projectId: "sudiku-zui",
+        storageBucket: "sudiku-zui.firebasestorage.app",
+        messagingSenderId: "127632344691",
+        appId: "1:127632344691:web:2e706f39acd1660c260c06"
+      }
+    },
 ```
+Lalu di Firebase Console project sudiku-zui: pastikan `admin.zuisystem.com` ada di Authorized domains dan Google aktif. (Opsional) safelist Client ID project **zuisystem** di Google sign-in sudiku-zui supaya Zui Admin tidak perlu menekan **Sambungkan**. Akun admin ditentukan `superAdmin()` di `firestore.rules` (`admin.zuisystem@gmail.com`). Studiku hanya memakai Rupiah; harga Ringgit di atas hanya pengisi tabel Zui Admin.
 
-### Struktur data
+## 3. Struktur data Firestore
 | Lokasi | Isi | Siapa yang bisa |
 |---|---|---|
-| `users/{uid}` | `{data: S, updatedAt}`, seluruh data aplikasi (pengganti `user_data`) | baca/tulis: pemilik |
-| `pantau/{uid}` | `{nick, jadwal, kegiatan, rencana, sesi, mnt, updatedAt}`, tanpa catatan | tulis: pemilik; baca: pemilik dan orang tua di grup keluarga |
-| `plans/{uid}` | `{plan: 'free'/'pelajar'/'keluarga'/'sekolah', until: timestamp, note}` | tulis: admin; baca: pemilik dan anggota grupnya |
-| `codes/{KODE}` | `{gid}` | buka satu per satu, tidak bisa didaftar |
-| `groups/{uidPemilik}` | `{name, kind, ownerId, code, count, createdAt}`, satu grup per pemilik | pemilik dan anggota |
-| `groups/{gid}/members/{uid}` | `{uid, code, joinedAt}` | anggota itu sendiri dan pemilik grup |
-| `groups/{gid}/items/{id}` | `{kind: 'tugas'/'jadwal', data, createdAt}` (pengganti `class_items`) | tulis: guru pemilik; baca: anggota |
+| `companies/{uid}` | `{name, owner, created_at, plan, until, free}` | baca: pemilik, anggota grupnya, admin; `plan`/`until`/`free` hanya admin |
+| `companies/{uid}/members/{uid}` | `{role: 'owner', email, name}` | pemilik dan admin |
+| `subreqs/{id}` | permintaan bayar `{cid, coName, plan, months, amount, cur, ref, by, byEmail, status, at}` | buat: pemilik (status `wait`); ubah: admin |
+| `zconfig/pay` | harga, QRIS, catatan pembayaran, WhatsApp | baca: pengguna masuk; tulis: admin |
+| `support/{uid}`, `support/{uid}/msgs` | chat dengan admin | pemilik dan admin |
+| `users/{uid}` | `{data: S, updatedAt}`, seluruh data aplikasi | pemilik |
+| `pantau/{uid}` | `{nick, jadwal, kegiatan, rencana, sesi, mnt}`, tanpa catatan | pemilik dan orang tua di grup keluarga |
+| `codes/{KODE}` | `{gid}` | dibuka satu per satu, tidak bisa didaftar |
+| `groups/{uidPemilik}` | `{name, kind, ownerId, code, count, createdAt}` | pemilik dan anggota |
+| `groups/{gid}/anggota/{uid}` | `{uid, code, joinedAt}` | anggota itu sendiri dan pemilik grup |
+| `groups/{gid}/items/{id}` | tugas dan jadwal kelas | tulis: guru pemilik; baca: anggota |
 
-### Cara pakai di aplikasi (pengganti RPC Supabase)
-- **my_plan:** baca `plans/{uid}`; Premium bila `plan != 'free'` dan `until` belum lewat. Anak juga Premium bila tergabung di grup keluarga yang paket pemiliknya aktif: cari lewat `collectionGroup('members').where('uid','==',uid)`, lalu baca `plans/{gid}`.
-- **create_group:** satu batch: `set groups/{uid}` (`count: 0`, `createdAt: serverTimestamp()`) dan `set codes/{KODE}` (`{gid: uid}`). Kode minimal 8 karakter acak; bila gagal karena kode sudah dipakai, buat kode lain.
-- **join_group:** baca `codes/{KODE}`, lalu satu batch: `set groups/{gid}/members/{uid}` (`{uid, code, joinedAt: serverTimestamp()}`) dan `update groups/{gid}` (`count: increment(1)`). Grup keluarga maksimal 3 anak, dan paket pemilik harus aktif.
-- **Keluar grup:** satu batch: `delete members/{uid}` dan `update groups/{gid}` (`count: increment(-1)`).
-- **family_view:** orang tua membaca `groups/{uid}/members`, lalu `pantau/{uidAnak}` untuk tiap anak. Aplikasi menulis `pantau/{uid}` setiap kali `users/{uid}` disimpan.
-- **delete_account:** hapus `users`, `pantau`, dan `plans` milik sendiri, keluar dari semua grup, dan bila punya grup: hapus `groups/{uid}` dan `codes/{KODE}` dulu, lalu anggota dan item di bawahnya. Terakhir `auth.currentUser.delete()`.
+- **Grup keluarga:** orang tua dengan paket Keluarga membuat grup di tab Grup dan membagikan kode (maksimal 3 anak). Orang tua hanya melihat jadwal, kegiatan, rencana, dan statistik fokus anak, bukan catatan pelajarannya.
+- **Kelas sekolah:** guru dengan paket Sekolah membuat kelas, membagikan kode, lalu menambah tugas atau jadwal. Guru tidak bisa melihat data pribadi siswa.
+- **Hapus akun** (Pengaturan > Hapus akun) menghapus data belajar, grup, dan akun. Permintaan bayar dan chat tetap tersimpan untuk pembukuan. Firebase meminta masuk ulang bila sesi sudah lama.
+- Satu dokumen Firestore maksimal 1 MB. Bila catatan pengguna sangat banyak, pindahkan catatan ke subkoleksi `users/{uid}/catatan` dan tambahkan aturannya.
 
-### Mengaktifkan paket
-Di **Firestore > Data**, buat atau ubah dokumen `plans/{uid}`: `plan` (string) dan `until` (timestamp tanggal berakhir). Konsol Firebase tidak terikat aturan. Untuk panel admin di aplikasi, beri akun admin custom claim `admin: true` lewat Admin SDK.
+## 4. GitHub Pages dan domain
+1. **Settings > Pages:** Source = *Deploy from a branch*, branch `main`, folder `/ (root)`.
+2. Custom domain `studikita.zuisystem.com` (file `CNAME`). Di DNS buat record CNAME `studikita` ke `zui-system.github.io`.
+3. Centang **Enforce HTTPS** setelah sertifikat aktif.
 
-### Catatan
-- Satu dokumen Firestore maksimal 1 MB. Bila catatan pengguna sangat banyak, pindahkan catatan ke subkoleksi `users/{uid}/catatan`.
-- Setelah aplikasi benar-benar pindah ke Firebase, perbarui `legal.html` (Kebijakan Privasi bagian 1, 3, dan 4): ganti Supabase dengan Firebase Authentication dan Cloud Firestore dari Google.
+## 5. Play Store
+1. Unggah semua file ke GitHub (termasuk `.nojekyll` dan folder `.well-known` bila ada).
+2. Buka pwabuilder.com, masukkan alamat situs, pilih paket Android, isi package name (misal `com.zuisystem.studiku`), lalu unduh file `.aab` dan kunci penandatanganannya. Simpan kunci itu baik-baik.
+3. Di Play Console aktifkan Play App Signing, lalu salin *SHA-256 fingerprint* ke `.well-known/assetlinks.json` (dan package name yang sama), unggah ulang ke GitHub. Tanpa ini aplikasi tampil dengan bilah alamat browser.
+4. Buat aplikasi di Play Console, unggah `.aab` ke jalur Closed testing, isi: kebijakan privasi (`https://studikita.zuisystem.com/legal.html#privasi`), Data safety, content rating, target audiens, ikon 512 px, feature graphic 1024x500, dan minimal 2 screenshot.
+5. Setelah tayang, isi `PLAY_URL` di bagian bawah `index.html` agar tombol unduh muncul.
+
+## 6. Dokumen legal
+- Bila harga, fitur, atau cara bayar berubah, samakan `legal.html` (Syarat bagian 5, tabel di Pengembalian Dana bagian 2) dan `index.html`, lalu perbarui tanggal berlakunya.
+- Aturan persetujuan orang tua untuk pengguna di bawah umur ada di Syarat bagian 3 dan Privasi bagian 7.
