@@ -74,7 +74,7 @@ Lalu di Firebase Console project sudiku-zui: pastikan `admin.zuisystem.com` ada 
 | `zconfig/pay` | harga, QRIS, catatan pembayaran, WhatsApp | baca: pengguna masuk; tulis: admin |
 | `support/{uid}`, `support/{uid}/msgs` | chat dengan admin | pemilik dan admin |
 | `users/{uid}` | `{data: S, updatedAt}`, seluruh data aplikasi | pemilik |
-| `pantau/{uid}` | `{nick, jadwal, kegiatan, rencana, sesi, mnt}`, tanpa catatan | pemilik dan orang tua di grup keluarga |
+| `pantau/{uid}` | `{nick, jadwal, kegiatan, rencana, sesi, mnt, sek}`, tanpa catatan | pemilik dan orang tua di grup keluarga |
 | `codes/{KODE}` | `{gid}` | dibuka satu per satu, tidak bisa didaftar |
 | `groups/{gid}` | `{name, kind, ownerId, code, count, createdAt, closed?}` | pemilik (`ownerId`) dan anggota. Grup keluarga dan kelas lama: `gid` = uid pemilik. Kelas baru: id acak 20 karakter |
 | `groups/{gid}/anggota/{uid}` | `{uid, code, joinedAt, nick}` (`nick` tidak ada di anggota lama) | anggota itu sendiri dan pemilik grup; `nick` bisa diubah anggota |
@@ -83,12 +83,18 @@ Lalu di Firebase Console project sudiku-zui: pastikan `admin.zuisystem.com` ada 
 | `schools/{uidSekolah}` | `{name, jenjang, alamat, ownerId, codeGuru, createdAt}` | sekolah itu dan gurunya |
 | `schools/{sid}/guru/{uid}` | `{uid, nama, code, joinedAt}` guru yang bergabung dengan kode guru | guru itu dan sekolah |
 | `kodeguru/{KODE}` | `{sid}` | dibuka satu per satu |
+| `schools/{sid}/info/{id}` | `{judul, isi, dari, at}` pengumuman | tulis: sekolah; baca: pengguna yang masuk |
+| `schools/{sid}/program/{id}` | `{nama, pj, status, progres, catatan, at}` | tulis: sekolah; baca: sekolah dan gurunya |
+| `schools/{sid}/pesan/{uidGuru}` dan `/msgs/{id}` | ringkasan `{last, dari, at}` dan pesan `{dari, t, uid, at}` | sekolah dan guru itu |
 | `groups/{gid}/pengajar/{uid}` | `{uid, nama, mapel: [...], at}` guru dan mapel di kelas sekolah | tulis: sekolah; baca: guru itu, sekolah, siswa kelas |
 | `groups/{gid}/items/{id}/nilai/{uid}` | `{uid, nilai, by, at}` nilai 0 sampai 100 | tulis: guru pemberi tugas; baca: siswa itu, guru itu, sekolah |
 | `groups/{gid}/items/{id}/selesai/{uid}` | `{uid, nick, at}`, tanda tugas kelas selesai | buat/hapus: siswa itu sendiri (harus anggota, hanya untuk tugas); baca: siswa itu dan guru pemilik |
 
 - **Pendaftaran:** wajib, hanya email dan kata sandi (tanpa Google, tanpa mode tanpa akun). Langkah: pilih peran (murid, orang tua, guru, sekolah) > data lengkap sesuai peran (`RF` di `app.html`) > email, kata sandi, ulangi kata sandi (bisa dilihat) > verifikasi email. Data pendaftaran disimpan di perangkat (`sk_rg`) sampai email terverifikasi, lalu ditulis ke `profil/{uid}`. Pengguna lama yang belum punya profil wajib melengkapi data saat masuk. Pengguna lama yang dulu masuk dengan Google memakai **Lupa kata sandi** dengan email yang sama untuk membuat kata sandi.
-- **Menu per peran** (`RTABS`): murid = Beranda, Jadwal, Tugas dan kegiatan, Nilai, Catatan, Rencana, Fokus, Kelasku, Kalkulator, Translate; orang tua = Keluarga; guru = Beranda, Kelas dan mapel, Beri tugas, Penilaian, Sekolah; sekolah = Dasbor, Kelas, Guru.
+- **Menu per peran** (`RTABS`): murid = Beranda, Jadwal, Tugas dan kegiatan, Nilai, Catatan, Rencana, Fokus, Kelasku, Pengumuman, Kalkulator, Translate; orang tua = Keluarga, Pengumuman; guru = Beranda, Kelas dan mapel, Beri tugas, Penilaian, Pengumuman, Pesan sekolah, Sekolah; sekolah = Dasbor, Kelas, Guru, Pengumuman, Pesan guru, Program.
+- **Pengumuman** (`schools/{sid}/info`): dibuat sekolah untuk semua. Guru membacanya di Pengumuman dan Beranda, murid dari sekolah kelas yang diikuti, orang tua dari sekolah anaknya (`pantau/{uidAnak}.sek`, ditulis aplikasi anak). Bisa dibaca pengguna mana pun yang masuk dan tahu id sekolahnya, jadi jangan berisi data pribadi.
+- **Pesan pribadi sekolah dan guru** (`schools/{sid}/pesan/{uidGuru}/msgs`): hanya sekolah dan guru itu. Guru yang keluar atau dikeluarkan tidak bisa membukanya lagi. Pesan baru dari guru ditandai • di daftar guru.
+- **Program sekolah** (`schools/{sid}/program`): nama, penanggung jawab, status (Direncanakan, Berjalan, Selesai), progres 0 sampai 100, dan catatan. Ringkasannya tampil di Dasbor; guru sekolah itu bisa membacanya.
 - **Sekolah:** saat daftar, akun sekolah langsung mendapat `schools/{uid}` dan **kode guru** (`kodeguru/{kode}`). Menu Kelas: buat kelas (kode untuk siswa), lalu tugaskan guru dan mapel per kelas (`groups/{gid}/pengajar/{uid}`). Menu Guru: kode guru, pesan undangan (salin atau WhatsApp), keluarkan guru. Dasbor: angka per kelas dan per guru, tanpa nama atau nilai siswa.
 - **Guru:** bergabung dengan kode guru (saat daftar atau di menu Sekolah), melihat kelas dan mapel yang ditugaskan, memberi tugas ke beberapa kelas sekaligus, melihat siapa yang sudah selesai, dan memberi nilai 0 sampai 100 (`items/{id}/nilai/{uid}`). Kelas lama buatan guru sendiri tetap bisa dibuka dari menu Sekolah.
 - **Murid:** bergabung ke kelas dengan kode (saat daftar atau di Kelasku), melihat tugas dari semua guru dan mapel, mencentang tugas selesai, dan melihat nilainya di menu Nilai.
@@ -129,4 +135,3 @@ Uji browser memakai Chromium di `/opt/pw-browsers/chromium` (ganti dengan variab
 - **Pengingat push (FCM):** notifikasi tetap datang walau aplikasi tertutup. Butuh pengirim terjadwal: Cloud Functions + Cloud Scheduler (project naik ke paket Blaze; untuk uji coba satu sekolah praktis Rp0 karena masuk kuota gratis) atau GitHub Actions terjadwal (gratis, kunci service account di GitHub Secrets). Perlu menyimpan token perangkat di Firestore (perbarui Kebijakan Privasi). Di iPhone hanya jalan bila aplikasi dipasang ke layar utama (iOS 16.4+).
 - **Anak tanpa email:** orang tua atau guru membuat akun siswa berupa nama pengguna + PIN. Secara teknis akun email/sandi Firebase dengan email buatan (mis. `nama.kode@siswa.studikita.zuisystem.com`) yang dibuat dan ditandai terverifikasi oleh Cloud Function (Admin SDK), jadi butuh Blaze. Alternatif tanpa server: Anonymous Auth + kode pemulihan, tetapi data hilang bila kode hilang.
 - **Tahap 2 (orang tua):** orang tua melihat nilai dan tugas kelas anak, dan berkirim pesan dengan guru yang mengajar anaknya.
-- **Tahap 3 (sekolah):** pengumuman untuk semua, pesan pribadi sekolah dan guru, program sekolah beserta statusnya.

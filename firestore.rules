@@ -24,6 +24,9 @@ rules_version = '2';
 //   schools/{uidSekolah}               sekolah; kelas sekolah = groups dengan field school
 //   schools/{sid}/guru/{uid}           guru yang bergabung dengan kode guru
 //   kodeguru/{kode}                    kode guru -> id sekolah, hanya bisa dibuka satu per satu
+//   schools/{sid}/info/{id}            pengumuman sekolah untuk semua
+//   schools/{sid}/program/{id}         program sekolah dan statusnya (sekolah dan gurunya)
+//   schools/{sid}/pesan/{uidGuru}/msgs pesan pribadi antara sekolah dan satu guru
 //
 // Paket Studiku di Zui Admin: starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel.
 
@@ -180,7 +183,9 @@ service cloud.firestore {
             && isMember(request.auth.uid, uid)
             && grp(request.auth.uid).kind == 'keluarga');
       allow create, update: if isMe(uid)
-        && onlyKeys(['nick', 'jadwal', 'kegiatan', 'rencana', 'sesi', 'mnt', 'updatedAt']);
+        && onlyKeys(['nick', 'jadwal', 'kegiatan', 'rencana', 'sesi', 'mnt', 'updatedAt', 'sek'])
+        && (!('sek' in request.resource.data)
+            || (request.resource.data.sek is list && request.resource.data.sek.size() <= 10));
       allow delete: if isMe(uid);
     }
 
@@ -271,6 +276,72 @@ service cloud.firestore {
           && request.resource.data.nama.size() > 0
           && request.resource.data.nama.size() <= 80;
         allow delete: if isMe(uid) || isMe(sid);
+      }
+
+      // Pengumuman untuk semua: guru, murid di kelas sekolah ini, dan orang tuanya.
+      // Bisa dibaca semua pengguna yang masuk dan tahu id sekolahnya; jangan berisi data pribadi.
+      match /info/{id} {
+        allow read: if signedIn();
+        allow create, update: if isMe(sid)
+          && onlyKeys(['judul', 'isi', 'dari', 'at'])
+          && request.resource.data.judul is string
+          && request.resource.data.judul.size() > 0
+          && request.resource.data.judul.size() <= 120
+          && request.resource.data.isi is string
+          && request.resource.data.isi.size() <= 2000
+          && request.resource.data.dari is string
+          && request.resource.data.dari.size() <= 120
+          && request.resource.data.at == request.time;
+        allow delete: if isMe(sid);
+      }
+
+      // Program sekolah: dikelola sekolah, dibaca sekolah dan gurunya.
+      match /program/{id} {
+        allow read: if isMe(sid) || (signedIn() && isGuruOf(sid, request.auth.uid));
+        allow create, update: if isMe(sid)
+          && onlyKeys(['nama', 'pj', 'status', 'progres', 'catatan', 'at'])
+          && request.resource.data.nama is string
+          && request.resource.data.nama.size() > 0
+          && request.resource.data.nama.size() <= 120
+          && request.resource.data.pj is string
+          && request.resource.data.pj.size() <= 80
+          && request.resource.data.status in ['Direncanakan', 'Berjalan', 'Selesai']
+          && request.resource.data.progres is int
+          && request.resource.data.progres >= 0
+          && request.resource.data.progres <= 100
+          && request.resource.data.catatan is string
+          && request.resource.data.catatan.size() <= 500
+          && request.resource.data.at == request.time;
+        allow delete: if isMe(sid);
+      }
+
+      // Pesan pribadi antara sekolah dan satu guru (id = uid guru). Guru lain tidak bisa membaca.
+      // Guru yang sudah keluar atau dikeluarkan dari sekolah tidak bisa membuka lagi.
+      match /pesan/{guid} {
+        function pihak() { return isMe(sid) || (isMe(guid) && isGuruOf(sid, guid)); }
+        function okDari(d) { return (isMe(sid) && d == 'sekolah') || (isMe(guid) && d == 'guru'); }
+        allow read: if pihak();
+        allow create, update: if pihak()
+          && onlyKeys(['last', 'dari', 'at'])
+          && request.resource.data.last is string
+          && request.resource.data.last.size() <= 120
+          && okDari(request.resource.data.dari)
+          && request.resource.data.at == request.time;
+        allow delete: if isMe(sid);
+
+        match /msgs/{id} {
+          allow read: if pihak();
+          allow create: if pihak()
+            && onlyKeys(['dari', 't', 'uid', 'at'])
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.t is string
+            && request.resource.data.t.size() > 0
+            && request.resource.data.t.size() <= 2000
+            && okDari(request.resource.data.dari)
+            && request.resource.data.at == request.time;
+          allow update: if false;
+          allow delete: if isMe(sid);
+        }
       }
     }
 
