@@ -177,6 +177,48 @@ try {
   await l.click('text=Hapus akun'); await l.waitForTimeout(3000);
   const lama = await admin(async (d) => ({ g: (await getDoc(doc(d, 'groups', L))).exists(), an: (await getDocs(collection(d, 'groups', L, 'anggota'))).size, it: (await getDocs(collection(d, 'groups', L, 'items'))).size, c: (await getDoc(doc(d, 'codes', 'LAMA0001'))).exists() }));
   ok(!lama.g && !lama.an && !lama.it && !lama.c, 'hapus akun guru lama membersihkan kelas lama');
+
+  console.log('Pengguna lama dari versi Supabase mendaftar ulang');
+  const ctx = await browser.newContext();
+  await ctx.route('https://www.gstatic.com/firebasejs/**', (rt) => rt.fulfill({ contentType: 'text/javascript', body: SDK(rt.request().url().split('/').pop()) }));
+  await ctx.route('https://fonts.googleapis.com/**', (rt) => rt.abort());
+  await ctx.route('http://localhost:5055/**', (rt) => new URL(rt.request().url()).pathname === '/app.html' ? rt.fulfill({ contentType: 'text/html', body: APP }) : rt.fulfill({ status: 404, body: '' }));
+  await ctx.addInitScript(() => {
+    if (!sessionStorage.getItem('seed')) {
+      sessionStorage.setItem('seed', '1');
+      localStorage.setItem('sk', JSON.stringify({ n: 'Citra', lv: 'SMP', mode: 'cloud', jadwal: [], kegiatan: [{ id: 'k1', judul: 'PR dari versi lama', kat: 'Tugas', tgl: '2026-12-01' }], catatan: [], rencana: [], sesi: {} }));
+      localStorage.setItem('sb-nparspjrfkrwgxujdyzy-auth-token', '{"access_token":"lama"}');
+    }
+    // catat perpindahan layar masuk <-> aplikasi (untuk mendeteksi layar berkedip)
+    window.__sw = [];
+    new MutationObserver(() => { const st = document.querySelector('#ge') ? 'gate' : document.querySelector('#nav button') ? 'app' : ''; if (st && window.__sw[window.__sw.length - 1] !== st) window.__sw.push(st); })
+      .observe(document, { childList: true, subtree: true });
+  });
+  const c = await ctx.newPage();
+  c.on('pageerror', (e) => console.log('    [pageerror]', e.message));
+  await c.goto('http://localhost:5055/app.html');
+  await c.waitForSelector('#ge');
+  await c.waitForTimeout(800);
+  ok(/Sesi masukmu sudah berakhir/.test(await c.locator('#gm').innerText()), 'sesi lama tanpa akun Firebase kembali ke layar masuk');
+  ok(await c.evaluate(() => Object.keys(localStorage).every((k) => !k.startsWith('sb-'))), 'sisa sesi Supabase dihapus dari perangkat');
+  await c.fill('#ge', 'citra@siswa.id'); await c.fill('#gp', 'rahasia1');
+  await c.click('button:has-text("Daftar")');
+  await c.waitForFunction(() => /email verifikasi/.test(document.querySelector('#gm').textContent), null, { timeout: 15000 });
+  ok(true, 'daftar mengirim email verifikasi dan tetap di layar masuk');
+  const oob = await (await fetch(AUTH + '/emulator/v1/projects/' + PROJECT + '/oobCodes')).json();
+  const v = oob.oobCodes.find((o) => o.email === 'citra@siswa.id' && o.requestType === 'VERIFY_EMAIL');
+  await fetch(v.oobLink, { redirect: 'manual' });
+  await c.click('button:has-text("Masuk")');
+  await c.waitForSelector('#nav button', { timeout: 15000 });
+  await c.waitForTimeout(2000);
+  const sw = await c.evaluate(() => window.__sw);
+  ok(sw.join('>') === 'gate>app', 'layar tidak berkedip (hanya layar masuk lalu aplikasi): ' + sw.join('>'));
+  ok(await c.locator('text=PR dari versi lama').isVisible(), 'data di perangkat tetap ada');
+  const cu = await c.evaluate(() => UID);
+  const ud = await admin(async (d) => (await getDoc(doc(d, 'users', cu))).data());
+  ok(ud && ud.data.kegiatan[0].judul === 'PR dari versi lama', 'data di perangkat tersimpan ke akun Firebase baru');
+  await ctx.close();
+
   console.log(`\nLulus ${pass} pemeriksaan.`);
 } finally {
   await browser.close();
