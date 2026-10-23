@@ -161,15 +161,37 @@ try {
   ok(await admin(async (d) => (await getDoc(doc(d, 'groups', k7a.id, 'anggota', M))).exists()), 'murid langsung masuk ke 7A lewat kode');
   const menuM = (await m.locator('#nav button').allInnerTexts()).join('|');
   ok(menuM.includes('Nilai') && menuM.includes('Kelasku') && !menuM.includes('Beri tugas'), 'menu murid berisi Nilai dan Kelasku');
+  console.log('Perbaikan: jadwal kelas, Premium dari paket sekolah, ubah data');
+  const hariIni = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'][new Date().getDay()];
+  await menu(sk, 'Kelas');
+  await sk.selectOption('#jh_' + k7a.id, hariIni); await sk.fill('#jm_' + k7a.id, '07:00'); await sk.fill('#js_' + k7a.id, '08:20');
+  await sk.click('#pg .card:has(#jh_' + k7a.id + ') >> button:text-is("Tambah jadwal")');
+  await sk.waitForSelector('#pg >> text=' + hariIni + ' 07:00–08:20 · Matematika');
+  ok(true, 'sekolah mengisi jadwal pelajaran 7A');
+  const pk7a = await admin(async (d) => (await getDoc(doc(d, 'groups', k7a.id))).data().pk);
+  ok(pk7a && pk7a.plan === '' && pk7a.free === false && pk7a.created_at, 'status paket sekolah tersalin ke kelas');
+  await admin((d) => setDoc(doc(d, 'companies', M), { name: 'Andi', owner: M, created_at: Timestamp.fromMillis(Date.now() - 60 * 864e5), plan: 'starter', until: Timestamp.fromMillis(Date.now() - 30 * 864e5) }));
+  await m.reload(); await siap(m);
+  ok(await m.evaluate(() => PLN) === 'pelajar', 'murid yang paketnya habis tetap Premium dari paket sekolah');
+  ok(await m.locator('.card:has-text("Jadwal kelas · Rina Wulandari") >> text=Matematika').isVisible(), 'jadwal kelas tampil di Beranda murid');
+  await m.click('[aria-label=Menu]'); await m.waitForTimeout(250); await m.click('#nav .set'); await m.waitForSelector('#sh h3:has-text("Pengaturan")');
+  await m.click('text=Ubah data pendaftaran'); await m.waitForSelector('text=Ubah data diri');
+  ok(!(await m.locator('#r_kode').count()) && !(await m.locator('#r_setuju').count()), 'ubah data tanpa kode dan persetujuan ulang');
+  await m.selectOption('#r_kelas', 'Kelas 8'); await m.fill('#r_hp', '081299990000'); await m.click('#v >> button:text-is("Simpan")');
+  await siap(m);
+  const pm = await admin(async (d) => (await getDoc(doc(d, 'profil', M))).data());
+  ok(pm.kelas === 'Kelas 8' && pm.hp === '081299990000' && pm.peran === 'murid', 'murid mengubah kelas dan nomor HP sendiri');
+
 
   console.log('Guru memberi tugas ke dua kelas, murid mencentang, guru menilai');
   await g.reload(); await siap(g);
-  ok(await g.locator('text=7A · Matematika').isVisible() && await g.locator('text=7B · Matematika').isVisible(), 'guru melihat kelas dan mapel yang diajar');
+  ok(await g.locator('text=7A · Matematika').first().isVisible() && await g.locator('text=7B · Matematika').first().isVisible(), 'guru melihat kelas dan mapel yang diajar');
+  ok(await g.locator('#pg >> text=Mengajar hari ini').isVisible() && await g.locator('.card:has-text("07:00") >> text=7A · Matematika').isVisible(), 'guru melihat jadwal mengajar hari ini');
   await menu(g, 'Beri tugas');
   await g.fill('#bj', 'Latihan pecahan hal. 42'); await g.fill('#bt', besok);
   for (const c of await g.locator('[name=kk]').all()) await c.check();
   await g.click('button:text-is("Kirim tugas")'); await g.waitForFunction(() => tab === 'gkelas' && !document.querySelector('#pg.empty'));
-  const it = await admin(async (d) => { const a = []; for (const k of [k7a, k7b]) a.push(...(await getDocs(collection(d, 'groups', k.id, 'items'))).docs.map((x) => x.data())); return a; });
+  const it = await admin(async (d) => { const a = []; for (const k of [k7a, k7b]) a.push(...(await getDocs(collection(d, 'groups', k.id, 'items'))).docs.map((x) => x.data()).filter((x) => x.kind === 'tugas')); return a; });
   ok(it.length === 2 && it.every((x) => x.by === G && x.mapel === 'Matematika'), 'satu tugas terkirim ke 7A dan 7B');
   await m.reload(); await siap(m);
   ok(await m.locator('.card:has-text("Latihan pecahan") >> text=Matematika · Rina Wulandari').isVisible(), 'murid melihat tugas beserta mapel dan gurunya');
@@ -183,7 +205,7 @@ try {
   await g.fill('.nil', '150'); await g.click('button:text-is("Simpan nilai")');
   ok(await g.locator('text=Nilai harus angka 0 sampai 100').isVisible(), 'nilai di luar 0 sampai 100 ditolak');
   await g.fill('.nil', '88'); await g.click('button:text-is("Simpan nilai")'); await g.waitForTimeout(1500);
-  ok((await admin(async (d) => (await getDoc(doc(d, 'groups', k7a.id, 'items', (await getDocs(collection(d, 'groups', k7a.id, 'items'))).docs[0].id, 'nilai', M))).data()))?.nilai === 88, 'nilai 88 tersimpan');
+  ok((await admin(async (d) => (await getDoc(doc(d, 'groups', k7a.id, 'items', (await getDocs(collection(d, 'groups', k7a.id, 'items'))).docs.find((x) => x.data().kind === 'tugas').id, 'nilai', M))).data()))?.nilai === 88, 'nilai 88 tersimpan');
   await m.reload(); await siap(m);
   ok(await m.locator('.card:has-text("Latihan pecahan") >> text=Nilai 88').isVisible(), 'murid melihat nilai di Beranda');
   await menu(m, 'Nilai');
