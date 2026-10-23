@@ -18,6 +18,12 @@ rules_version = '2';
 //   groups/{gid}/anggota/{uid}         anggota grup (dengan nama panggilan, dilihat pemilik)
 //   groups/{gid}/items/{id}            tugas dan jadwal kelas (grup sekolah)
 //   groups/{gid}/items/{id}/selesai/{uid}  tanda tugas kelas selesai, dibaca siswa itu dan guru
+//   groups/{gid}/items/{id}/nilai/{uid}    nilai tugas dari guru, dibaca siswa itu dan guru
+//   groups/{gid}/pengajar/{uid}        guru yang mengajar di kelas sekolah beserta mapelnya (diatur sekolah)
+//   profil/{uid}                       data pendaftaran (peran murid/ortu/guru/sekolah), hanya pemilik
+//   schools/{uidSekolah}               sekolah; kelas sekolah = groups dengan field school
+//   schools/{sid}/guru/{uid}           guru yang bergabung dengan kode guru
+//   kodeguru/{kode}                    kode guru -> id sekolah, hanya bisa dibuka satu per satu
 //
 // Paket Studiku di Zui Admin: starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel.
 
@@ -178,6 +184,96 @@ service cloud.firestore {
       allow delete: if isMe(uid);
     }
 
+    // ---- Profil pendaftaran ----
+
+    function optStr(d, k, n) { return !(k in d) || (d[k] is string && d[k].size() <= n); }
+    function okProfil() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['peran', 'nama', 'hp', 'alamat', 'jenjang', 'kelas', 'jurusan', 'sekolah',
+          'anak', 'mapel', 'ajar', 'instansi', 'jenis', 'npsn', 'jabatan', 'jumlah', 'kode', 'at'])
+        && d.peran in ['murid', 'ortu', 'guru', 'sekolah']
+        && d.nama is string && d.nama.size() > 0 && d.nama.size() <= 80
+        && d.hp is string && d.hp.size() >= 8 && d.hp.size() <= 20
+        && d.alamat is string && d.alamat.size() > 0 && d.alamat.size() <= 200
+        && optStr(d, 'jenjang', 40) && optStr(d, 'kelas', 40) && optStr(d, 'jurusan', 80)
+        && optStr(d, 'sekolah', 120) && optStr(d, 'anak', 4) && optStr(d, 'mapel', 120)
+        && optStr(d, 'ajar', 120) && optStr(d, 'instansi', 120) && optStr(d, 'jenis', 40)
+        && optStr(d, 'npsn', 20) && optStr(d, 'jabatan', 80) && optStr(d, 'jumlah', 40)
+        && optStr(d, 'kode', 20)
+        && d.at == request.time;
+    }
+    function peran(uid) { return get(/databases/$(database)/documents/profil/$(uid)).data.peran; }
+
+    // Peran dipilih sekali saat daftar dan tidak bisa diganti sendiri (lewat admin ZUI).
+    match /profil/{uid} {
+      allow read, delete: if isMe(uid);
+      allow create: if isMe(uid) && okProfil();
+      allow update: if isMe(uid) && okProfil() && request.resource.data.peran == resource.data.peran;
+    }
+
+    // ---- Sekolah ----
+
+    function isGuruOf(sid, uid) {
+      return exists(/databases/$(database)/documents/schools/$(sid)/guru/$(uid));
+    }
+
+    // Kode guru hanya bisa dibuka satu per satu, dibuat bersama dokumen sekolahnya.
+    match /kodeguru/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && code.size() >= 8
+        && onlyKeys(['sid'])
+        && request.resource.data.sid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/schools/$(request.auth.uid)).data.codeGuru == code;
+      allow delete: if signedIn() && resource.data.sid == request.auth.uid;
+    }
+
+    // Satu sekolah per akun berperan sekolah (id = uid admin sekolah).
+    match /schools/{sid} {
+      function okSchool() {
+        let d = request.resource.data;
+        return d.name is string && d.name.size() > 0 && d.name.size() <= 120
+          && d.jenjang is string && d.jenjang.size() <= 40
+          && d.alamat is string && d.alamat.size() <= 200;
+      }
+      allow get: if isMe(sid) || (signedIn() && isGuruOf(sid, request.auth.uid));
+      allow list: if false;
+      allow create: if isMe(sid)
+        && onlyKeys(['name', 'jenjang', 'alamat', 'ownerId', 'codeGuru', 'createdAt'])
+        && okSchool()
+        && request.resource.data.ownerId == sid
+        && request.resource.data.codeGuru is string
+        && request.resource.data.codeGuru.size() >= 8
+        && existsAfter(/databases/$(database)/documents/kodeguru/$(request.resource.data.codeGuru))
+        && request.resource.data.createdAt == request.time
+        && peran(sid) == 'sekolah';
+      allow update: if isMe(sid) && changedOnly(['name', 'jenjang', 'alamat']) && okSchool();
+      allow delete: if isMe(sid);
+
+      // Guru bergabung dengan kode guru dari sekolah. Sekolah bisa mengeluarkan guru.
+      match /guru/{uid} {
+        allow read: if isMe(uid) || isMe(sid);
+        allow create: if isMe(uid)
+          && uid != sid
+          && onlyKeys(['uid', 'nama', 'code', 'joinedAt'])
+          && request.resource.data.uid == uid
+          && request.resource.data.nama is string
+          && request.resource.data.nama.size() > 0
+          && request.resource.data.nama.size() <= 80
+          && request.resource.data.joinedAt == request.time
+          && exists(/databases/$(database)/documents/schools/$(sid))
+          && request.resource.data.code == get(/databases/$(database)/documents/schools/$(sid)).data.codeGuru
+          && peran(uid) == 'guru';
+        allow update: if isMe(uid)
+          && changedOnly(['nama'])
+          && request.resource.data.nama is string
+          && request.resource.data.nama.size() > 0
+          && request.resource.data.nama.size() <= 80;
+        allow delete: if isMe(uid) || isMe(sid);
+      }
+    }
+
     // ---- Grup ----
 
     // Pemilik grup menurut field ownerId (grup lama juga punya ownerId = id grup).
@@ -186,6 +282,10 @@ service cloud.firestore {
     }
     function grpOpen(gid) { return grp(gid).get('closed', false) == false; }
     function okNick(d) { return !('nick' in d) || (d.nick is string && d.nick.size() <= 60); }
+    // Guru yang ditugaskan sekolah mengajar di kelas ini.
+    function isPengajar(gid) {
+      return signedIn() && exists(/databases/$(database)/documents/groups/$(gid)/pengajar/$(request.auth.uid));
+    }
 
     // Kode hanya bisa dibuka satu per satu (tidak bisa didaftar), jadi kode tidak bisa ditebak massal.
     // Dibuat dalam satu batch bersama dokumen grupnya. Kode yang sudah dipakai tidak bisa ditimpa.
@@ -205,15 +305,20 @@ service cloud.firestore {
     match /groups/{gid} {
       function owner() { return signedIn() && resource.data.ownerId == request.auth.uid; }
 
-      allow get: if isMe(gid) || owner() || (signedIn() && isMember(gid, request.auth.uid));
+      allow get: if isMe(gid) || owner() || isPengajar(gid) || (signedIn() && isMember(gid, request.auth.uid));
       // Pemilik boleh mendaftar grupnya sendiri: where('ownerId', '==', uid).
       allow list: if owner();
 
       // Hanya pemilik paket keluarga atau sekolah yang aktif. Grup keluarga tetap satu per
       // pemilik (id = uid pemilik). Kelas sekolah boleh banyak, id acak 20 karakter
       // (UID Firebase 28 karakter, jadi id kelas tidak bisa menyamar sebagai UID orang lain).
+      // Kelas milik sekolah menyimpan field school = uid sekolah (pembuatnya sendiri).
       allow create: if signedIn()
-        && onlyKeys(['name', 'kind', 'ownerId', 'code', 'count', 'createdAt'])
+        && onlyKeys(['name', 'kind', 'ownerId', 'code', 'count', 'createdAt', 'school'])
+        && (!('school' in request.resource.data)
+            || (request.resource.data.school == request.auth.uid
+                && request.resource.data.kind == 'sekolah'
+                && exists(/databases/$(database)/documents/schools/$(request.auth.uid))))
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.kind in ['keluarga', 'sekolah']
         && (gid == request.auth.uid
@@ -249,7 +354,7 @@ service cloud.firestore {
       allow delete: if owner();
 
       match /anggota/{uid} {
-        allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid);
+        allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid) || isPengajar(gid);
 
         // Bergabung harus memakai kode grup yang benar, saat paket pemilik masih aktif,
         // grup belum ditutup, dan menaikkan count di batch yang sama. Grup keluarga maksimal 3 anak.
@@ -281,8 +386,26 @@ service cloud.firestore {
           || (ownsGrp(gid) && !grpOpen(gid));
       }
 
+      // Sekolah menugaskan guru (yang sudah bergabung ke sekolahnya) beserta mapelnya.
+      // Siswa di kelas boleh melihat daftar guru dan mapel.
+      match /pengajar/{uid} {
+        allow read: if isMe(uid) || ownsGrp(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow create, update: if ownsGrp(gid)
+          && grp(gid).get('school', '') == request.auth.uid
+          && isGuruOf(request.auth.uid, uid)
+          && onlyKeys(['uid', 'nama', 'mapel', 'at'])
+          && request.resource.data.uid == uid
+          && request.resource.data.nama is string
+          && request.resource.data.nama.size() <= 80
+          && request.resource.data.mapel is list
+          && request.resource.data.mapel.size() > 0
+          && request.resource.data.mapel.size() <= 20
+          && request.resource.data.at == request.time;
+        allow delete: if isMe(uid) || ownsGrp(gid) || (isMe(gid) && !grpExists(gid));
+      }
+
       match /items/{itemId} {
-        allow read: if isMe(gid) || ownsGrp(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow read: if isMe(gid) || ownsGrp(gid) || isPengajar(gid) || (signedIn() && isMember(gid, request.auth.uid));
         allow create: if ownsGrp(gid)
           && grp(gid).kind == 'sekolah'
           && grpOpen(gid)
@@ -291,13 +414,45 @@ service cloud.firestore {
           && request.resource.data.kind in ['tugas', 'jadwal']
           && request.resource.data.data is map
           && request.resource.data.createdAt == request.time;
+        // Guru pengajar memberi tugas untuk mapel yang ia ajar di kelas ini.
+        allow create: if isPengajar(gid)
+          && grp(gid).kind == 'sekolah'
+          && grpOpen(gid)
+          && planActive(grp(gid).ownerId, 'sekolah')
+          && onlyKeys(['kind', 'data', 'createdAt', 'by', 'mapel'])
+          && request.resource.data.kind == 'tugas'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.mapel in get(/databases/$(database)/documents/groups/$(gid)/pengajar/$(request.auth.uid)).data.mapel
+          && request.resource.data.data is map
+          && request.resource.data.createdAt == request.time;
         allow update: if false;
-        allow delete: if isMe(gid) || ownsGrp(gid);
+        allow delete: if isMe(gid) || ownsGrp(gid)
+          || (signedIn() && resource.data.get('by', '') == request.auth.uid);
+
+        function itemBy() {
+          return get(/databases/$(database)/documents/groups/$(gid)/items/$(itemId)).data.get('by', '');
+        }
+        // Guru pemberi tugas (atau pemilik kelas) memberi nilai 0 sampai 100.
+        // Siswa hanya melihat nilainya sendiri.
+        match /nilai/{uid} {
+          function canGrade() { return ownsGrp(gid) || (signedIn() && itemBy() == request.auth.uid); }
+          allow read: if isMe(uid) || isMe(gid) || canGrade();
+          allow create, update: if canGrade()
+            && isMember(gid, uid)
+            && onlyKeys(['uid', 'nilai', 'by', 'at'])
+            && request.resource.data.uid == uid
+            && request.resource.data.nilai is number
+            && request.resource.data.nilai >= 0
+            && request.resource.data.nilai <= 100
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.at == request.time;
+          allow delete: if isMe(uid) || isMe(gid) || canGrade();
+        }
 
         // Siswa menandai tugas kelas selesai. Guru pemilik kelas melihat siapa saja
         // (nama panggilan) yang sudah selesai. Siswa lain tidak bisa melihatnya.
         match /selesai/{uid} {
-          allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid);
+          allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid) || isPengajar(gid);
           allow create: if isMe(uid)
             && isMember(gid, uid)
             && onlyKeys(['uid', 'nick', 'at'])
@@ -319,6 +474,18 @@ service cloud.firestore {
     }
     // Tugas kelas yang sudah ditandai selesai: collectionGroup('selesai').where('uid', '==', uidSendiri)
     match /{path=**}/selesai/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    // Nilai milik sendiri: collectionGroup('nilai').where('uid', '==', uidSendiri)
+    match /{path=**}/nilai/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    // Kelas yang diajar: collectionGroup('pengajar').where('uid', '==', uidSendiri)
+    match /{path=**}/pengajar/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    // Sekolah tempat mengajar: collectionGroup('guru').where('uid', '==', uidSendiri)
+    match /{path=**}/guru/{uid} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
     }
   }

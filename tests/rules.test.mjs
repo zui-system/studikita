@@ -298,3 +298,156 @@ test('standar: pengguna tidak bisa mengisi paket sendiri; permintaan bayar tetap
   await assertSucceeds(setDoc(doc(d, 'users', X), { data: { n: 'x' }, updatedAt: serverTimestamp() }));
   await assertFails(getDoc(doc(db(T), 'users', X)));
 });
+
+// ---- Pendaftaran dengan peran, sekolah, guru, pengajar, dan nilai ----
+
+const SK = U('sekolah'), G1 = U('guruA'), G2 = U('guruB'), M1 = U('muridA'), M2 = U('muridB');
+const KLS = 'KELAS7Aaaaaaaaaaaaaa';
+const prof = (uid, peran, extra = {}) => setDoc(doc(db(uid), 'profil', uid),
+  { peran, nama: 'Nama ' + peran, hp: '081234567890', alamat: 'Jl. Merdeka 1, Bandung', at: serverTimestamp(), ...extra });
+async function sekolah(uid = SK, code = 'GURU0001') {
+  const d = db(uid), b = writeBatch(d);
+  b.set(doc(d, 'schools', uid), { name: 'SMPN 5 Bandung', jenjang: 'SMP / MTs', alamat: 'Jl. Belitung 8', ownerId: uid, codeGuru: code, createdAt: serverTimestamp() });
+  b.set(doc(d, 'kodeguru', code), { sid: uid });
+  return b.commit();
+}
+const joinGuru = (uid, sid = SK, code = 'GURU0001') =>
+  setDoc(doc(db(uid), 'schools', sid, 'guru', uid), { uid, nama: 'Guru ' + uid.slice(0, 5), code, joinedAt: serverTimestamp() });
+async function kelasSekolah(gid = KLS, code = 'K7A00001') {
+  const d = db(SK), b = writeBatch(d);
+  b.set(doc(d, 'groups', gid), { name: '7A', kind: 'sekolah', ownerId: SK, code, count: 0, createdAt: serverTimestamp(), school: SK });
+  b.set(doc(d, 'codes', code), { gid });
+  return b.commit();
+}
+const ajar = (uid, mapel, gid = KLS) => setDoc(doc(db(SK), 'groups', gid, 'pengajar', uid), { uid, nama: 'Guru', mapel, at: serverTimestamp() });
+const tugasGuru = (uid, id, mapel, gid = KLS) => setDoc(doc(db(uid), 'groups', gid, 'items', id),
+  { kind: 'tugas', data: { judul: 'Latihan', tgl: '2026-11-01', guru: 'Bu Rina' }, createdAt: serverTimestamp(), by: uid, mapel });
+const nilai = (uid, item, murid, n, gid = KLS) => setDoc(doc(db(uid), 'groups', gid, 'items', item, 'nilai', murid),
+  { uid: murid, nilai: n, by: uid, at: serverTimestamp() });
+
+async function siapSekolah() {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'companies', SK), { name: 'SMPN 5', owner: SK, created_at: Timestamp.now() }));
+  await prof(SK, 'sekolah', { instansi: 'SMPN 5 Bandung' });
+  await sekolah();
+  for (const g of [G1, G2]) { await prof(g, 'guru', { sekolah: 'SMPN 5 Bandung', mapel: 'Matematika' }); await joinGuru(g); }
+  await kelasSekolah();
+  await ajar(G1, ['Matematika']);
+  await ajar(G2, ['IPA']);
+  for (const [m, n] of [[M1, 'Andi'], [M2, 'Budi']]) { await prof(m, 'murid', { jenjang: 'SMP', kelas: 'Kelas 7', sekolah: 'SMPN 5 Bandung' }); await join(m, KLS, 'K7A00001', n); }
+}
+
+test('profil: wajib lengkap, peran tidak bisa diganti, hanya pemilik yang membaca', async () => {
+  await assertSucceeds(prof(M1, 'murid', { jenjang: 'SMA/SMK/MA', kelas: 'Kelas 11', jurusan: 'IPA', sekolah: 'SMAN 1' }));
+  await assertFails(prof(M2, 'admin'));
+  await assertFails(setDoc(doc(db(M2), 'profil', M2), { peran: 'murid', nama: 'Budi', alamat: 'x', at: serverTimestamp() }));
+  await assertFails(prof(M2, 'murid', { lain: 'x' }));
+  await assertFails(prof(M1, 'guru'));
+  await assertSucceeds(prof(M1, 'murid', { kelas: 'Kelas 12' }));
+  await assertFails(getDoc(doc(db(T), 'profil', M1)));
+  await assertFails(prof(M2, 'murid', {}).then(() => setDoc(doc(db(X), 'profil', M2), { peran: 'murid', nama: 'x', hp: '081234567890', alamat: 'x', at: serverTimestamp() })));
+});
+
+test('sekolah: hanya akun berperan sekolah yang membuat sekolah dan kode guru', async () => {
+  await prof(M1, 'murid');
+  await assertFails(sekolah(M1, 'GURU0009'));
+  await prof(SK, 'sekolah');
+  await assertSucceeds(sekolah());
+  await assertFails(setDoc(doc(db(X), 'kodeguru', 'GURU0002'), { sid: SK }));
+  await assertSucceeds(getDoc(doc(db(X), 'kodeguru', 'GURU0001')));
+  await assertFails(getDocs(collection(db(X), 'kodeguru')));
+  await assertFails(getDoc(doc(db(X), 'schools', SK)));
+});
+
+test('guru bergabung ke sekolah dengan kode guru', async () => {
+  await prof(SK, 'sekolah'); await sekolah();
+  await prof(G1, 'guru'); await prof(M1, 'murid');
+  await assertFails(joinGuru(G1, SK, 'SALAH001'));
+  await assertFails(joinGuru(M1));
+  await assertSucceeds(joinGuru(G1));
+  await assertSucceeds(getDoc(doc(db(G1), 'schools', SK)));
+  const r = await assertSucceeds(getDocs(query(collectionGroup(db(G1), 'guru'), where('uid', '==', G1))));
+  if (r.size !== 1) throw new Error('collectionGroup guru');
+  await assertSucceeds(getDocs(collection(db(SK), 'schools', SK, 'guru')));
+  await assertFails(getDocs(collection(db(G1), 'schools', SK, 'guru')));
+  await assertSucceeds(deleteDoc(doc(db(SK), 'schools', SK, 'guru', G1)));
+});
+
+test('kelas milik sekolah; field school hanya untuk sekolahnya sendiri', async () => {
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'companies', SK), { name: 'S', owner: SK, created_at: Timestamp.now() }));
+  await prof(SK, 'sekolah');
+  await assertFails(kelasSekolah());
+  await sekolah();
+  await assertSucceeds(kelasSekolah());
+  const d = db(T), b = writeBatch(d);
+  b.set(doc(d, 'groups', K2), { name: 'x', kind: 'sekolah', ownerId: T, code: 'KODE0099', count: 0, createdAt: serverTimestamp(), school: SK });
+  b.set(doc(d, 'codes', 'KODE0099'), { gid: K2 });
+  await assertFails(b.commit());
+});
+
+test('sekolah menugaskan guru dan mapel; guru tidak bisa menugaskan dirinya', async () => {
+  await siapSekolah();
+  await assertFails(setDoc(doc(db(G1), 'groups', KLS, 'pengajar', G1), { uid: G1, nama: 'x', mapel: ['IPS'], at: serverTimestamp() }));
+  await prof(X, 'guru');
+  await assertFails(ajar(X, ['IPS']));
+  await assertFails(ajar(G1, []));
+  await assertSucceeds(ajar(G1, ['Matematika', 'Informatika']));
+  const r = await assertSucceeds(getDocs(query(collectionGroup(db(G1), 'pengajar'), where('uid', '==', G1))));
+  if (r.size !== 1) throw new Error('collectionGroup pengajar');
+  await assertSucceeds(getDocs(collection(db(M1), 'groups', KLS, 'pengajar')));
+});
+
+test('guru pengajar membaca kelas, siswa, dan memberi tugas untuk mapelnya saja', async () => {
+  await siapSekolah();
+  await assertSucceeds(getDoc(doc(db(G1), 'groups', KLS)));
+  await assertSucceeds(getDocs(collection(db(G1), 'groups', KLS, 'anggota')));
+  await assertSucceeds(tugasGuru(G1, 'mtk1', 'Matematika'));
+  await assertFails(tugasGuru(G1, 'ipa1', 'IPA'));
+  await assertFails(tugasGuru(X, 'x1', 'Matematika'));
+  await assertFails(setDoc(doc(db(G1), 'groups', KLS, 'items', 'mtk2'), { kind: 'tugas', data: {}, createdAt: serverTimestamp(), by: G2, mapel: 'Matematika' }));
+  await assertSucceeds(getDocs(collection(db(M1), 'groups', KLS, 'items')));
+  await assertFails(deleteDoc(doc(db(G2), 'groups', KLS, 'items', 'mtk1')));
+  await assertSucceeds(deleteDoc(doc(db(G1), 'groups', KLS, 'items', 'mtk1')));
+});
+
+test('guru melihat siapa yang selesai dan memberi nilai; siswa hanya melihat nilainya', async () => {
+  await siapSekolah();
+  await tugasGuru(G1, 'mtk1', 'Matematika');
+  await tugasGuru(G2, 'ipa1', 'IPA');
+  await assertSucceeds(mark(M1, KLS, 'mtk1'));
+  await assertSucceeds(getDocs(collection(db(G1), 'groups', KLS, 'items', 'mtk1', 'selesai')));
+  await assertSucceeds(nilai(G1, 'mtk1', M1, 88));
+  await assertSucceeds(nilai(G1, 'mtk1', M1, 90));
+  await assertFails(nilai(G1, 'mtk1', M1, 101));
+  await assertFails(nilai(G1, 'mtk1', X, 80));
+  await assertFails(nilai(G2, 'mtk1', M2, 80));
+  await assertFails(nilai(M1, 'mtk1', M1, 100));
+  await assertSucceeds(getDoc(doc(db(M1), 'groups', KLS, 'items', 'mtk1', 'nilai', M1)));
+  await assertFails(getDoc(doc(db(M2), 'groups', KLS, 'items', 'mtk1', 'nilai', M1)));
+  await assertFails(getDocs(collection(db(G2), 'groups', KLS, 'items', 'mtk1', 'nilai')));
+  await assertSucceeds(getDocs(collection(db(SK), 'groups', KLS, 'items', 'mtk1', 'nilai')));
+  const r = await assertSucceeds(getDocs(query(collectionGroup(db(M1), 'nilai'), where('uid', '==', M1))));
+  if (r.size !== 1 || r.docs[0].data().nilai !== 90) throw new Error('collectionGroup nilai');
+  await assertFails(getDocs(query(collectionGroup(db(M2), 'nilai'), where('uid', '==', M1))));
+});
+
+test('paket sekolah habis: guru tidak bisa memberi tugas', async () => {
+  await siapSekolah();
+  await env.withSecurityRulesDisabled((c) => updateDoc(doc(c.firestore(), 'companies', SK), { plan: 'business', until: past }));
+  await assertFails(tugasGuru(G1, 'mtk9', 'Matematika'));
+});
+
+test('sekolah menghapus kelas beserta pengajar, tugas, nilai, dan anggota', async () => {
+  await siapSekolah();
+  await tugasGuru(G1, 'mtk1', 'Matematika');
+  await mark(M1, KLS, 'mtk1');
+  await nilai(G1, 'mtk1', M1, 80);
+  const d = db(SK);
+  await assertSucceeds(updateDoc(doc(d, 'groups', KLS), { closed: true }));
+  await assertSucceeds(deleteDoc(doc(d, 'groups', KLS, 'items', 'mtk1', 'nilai', M1)));
+  await assertSucceeds(deleteDoc(doc(d, 'groups', KLS, 'items', 'mtk1', 'selesai', M1)));
+  await assertSucceeds(deleteDoc(doc(d, 'groups', KLS, 'items', 'mtk1')));
+  for (const g of [G1, G2]) await assertSucceeds(deleteDoc(doc(d, 'groups', KLS, 'pengajar', g)));
+  for (const m of [M1, M2]) await assertSucceeds(deleteDoc(doc(d, 'groups', KLS, 'anggota', m)));
+  const b = writeBatch(d); b.delete(doc(d, 'groups', KLS)); b.delete(doc(d, 'codes', 'K7A00001'));
+  await assertSucceeds(b.commit());
+});
