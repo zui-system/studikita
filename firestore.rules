@@ -1,15 +1,22 @@
 rules_version = '2';
 
-// Aturan Cloud Firestore untuk ZUI Studiku.
-// Struktur data dan cara pakainya dijelaskan di README bagian "Firebase".
+// Aturan Cloud Firestore untuk ZUI Studiku (project sudiku-zui).
+// Paket, permintaan bayar, harga, dan chat memakai pola "standar" Zui Admin
+// (sama dengan ZUI KONTRAKTOR, ZUI JURNAL, ZUI TO-DO). Lihat README bagian 9.
 //
-//   users/{uid}                      data lengkap pengguna (isi S di app.html), hanya pemilik
-//   pantau/{uid}                     ringkasan untuk orang tua: tanpa catatan pelajaran
-//   plans/{uid}                      paket aktif, hanya admin yang boleh menulis
-//   codes/{kode}                     kode grup -> id grup, hanya bisa dibuka satu per satu
-//   groups/{uidPemilik}              satu grup per pemilik, id grup = uid pemilik
-//   groups/{gid}/members/{uid}       anggota grup
-//   groups/{gid}/items/{id}          tugas dan jadwal kelas (grup sekolah)
+//   companies/{uid}                    paket pengguna (ID = UID). plan, until, free hanya diubah admin ZUI
+//   companies/{uid}/members/{uid}      email pemilik, dibaca Zui Admin
+//   subreqs/{id}                       permintaan bayar (antrean Zui Admin)
+//   zconfig/pay                        harga, QRIS, catatan pembayaran (diatur di Zui Admin)
+//   support/{uid}, support/{uid}/msgs  chat dengan admin ZUI
+//   users/{uid}                        data lengkap pengguna (isi S di app.html), hanya pemilik
+//   pantau/{uid}                       ringkasan untuk orang tua: tanpa catatan pelajaran
+//   codes/{kode}                       kode grup -> id grup, hanya bisa dibuka satu per satu
+//   groups/{uidPemilik}                satu grup per pemilik, id grup = uid pemilik
+//   groups/{gid}/anggota/{uid}         anggota grup
+//   groups/{gid}/items/{id}            tugas dan jadwal kelas (grup sekolah)
+//
+// Paket Studiku di Zui Admin: starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,7 +26,10 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email_verified == true;
     }
     function isMe(uid) { return signedIn() && request.auth.uid == uid; }
-    function isAdmin() { return signedIn() && request.auth.token.admin == true; }
+    // Akun admin ZUI (samakan dengan adminEmail di config.js Zui Admin).
+    function superAdmin() {
+      return signedIn() && request.auth.token.email.lower() in ['admin.zuisystem@gmail.com'];
+    }
 
     function onlyKeys(keys) { return request.resource.data.keys().hasOnly(keys); }
     function changedOnly(keys) {
@@ -32,16 +42,111 @@ service cloud.firestore {
     function grpAfter(gid) { return getAfter(/databases/$(database)/documents/groups/$(gid)).data; }
 
     function isMember(gid, uid) {
-      return exists(/databases/$(database)/documents/groups/$(gid)/members/$(uid));
+      return exists(/databases/$(database)/documents/groups/$(gid)/anggota/$(uid));
     }
     function isMemberAfter(gid, uid) {
-      return existsAfter(/databases/$(database)/documents/groups/$(gid)/members/$(uid));
+      return existsAfter(/databases/$(database)/documents/groups/$(gid)/anggota/$(uid));
     }
 
+    // Paket berbayar yang masih aktif (termasuk tenggang 3 hari, sama dengan Zui Admin),
+    // atau gratis selamanya. Grup keluarga butuh paket pro, kelas sekolah butuh paket business.
+    // Masa percobaan tidak membuka fitur grup.
     function planActive(uid, kind) {
-      return exists(/databases/$(database)/documents/plans/$(uid))
-        && get(/databases/$(database)/documents/plans/$(uid)).data.plan == kind
-        && get(/databases/$(database)/documents/plans/$(uid)).data.until > request.time;
+      let p = /databases/$(database)/documents/companies/$(uid);
+      return exists(p) && (get(p).data.get('free', false) == true
+        || (get(p).data.get('until', null) != null
+            && get(p).data.get('plan', '') == (kind == 'keluarga' ? 'pro' : 'business')
+            && request.time < get(p).data.until + duration.value(3, 'd')));
+    }
+
+    // ---- Paket (pola standar Zui Admin) ----
+
+    match /companies/{cid} {
+      allow read: if isMe(cid) || superAdmin() || (signedIn() && isMember(cid, request.auth.uid));
+      // Pengguna tidak bisa mengisi paket, masa aktif, atau status gratis sendiri.
+      allow create: if isMe(cid)
+        && onlyKeys(['name', 'owner', 'created_at'])
+        && request.resource.data.owner == cid
+        && request.resource.data.created_at == request.time
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 120;
+      allow update: if superAdmin()
+        || (isMe(cid) && changedOnly(['name'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() <= 120);
+      allow delete: if isMe(cid);
+
+      match /members/{uid} {
+        allow read: if isMe(cid) || superAdmin();
+        allow create, update: if isMe(uid) && uid == cid
+          && onlyKeys(['role', 'email'])
+          && request.resource.data.role == 'owner'
+          && request.resource.data.email == request.auth.token.email;
+        allow delete: if isMe(cid);
+      }
+    }
+
+    match /zconfig/{id} {
+      allow read: if signedIn();
+      allow write: if superAdmin();
+    }
+
+    // Permintaan bayar manual. Pelanggan hanya bisa membuat permintaan berstatus 'wait'
+    // untuk akunnya sendiri; mengaktifkan atau menolak hanya lewat Zui Admin.
+    match /subreqs/{id} {
+      allow create: if signedIn()
+        && onlyKeys(['cid', 'coName', 'plan', 'months', 'amount', 'cur', 'ref', 'by', 'byEmail', 'status', 'at'])
+        && request.resource.data.cid == request.auth.uid
+        && request.resource.data.by == request.auth.uid
+        && exists(/databases/$(database)/documents/companies/$(request.auth.uid))
+        && request.resource.data.status == 'wait'
+        && request.resource.data.at == request.time
+        && request.resource.data.plan in ['starter', 'pro']
+        && request.resource.data.months in [1, 6, 12]
+        && request.resource.data.amount is number
+        && request.resource.data.cur in ['IDR', 'MYR']
+        && request.resource.data.ref is string
+        && request.resource.data.ref.size() > 0
+        && request.resource.data.ref.size() <= 60
+        && request.resource.data.coName is string
+        && request.resource.data.coName.size() <= 120
+        && request.resource.data.byEmail is string
+        && request.resource.data.byEmail.size() <= 120;
+      allow read: if superAdmin() || (signedIn() && resource.data.cid == request.auth.uid);
+      allow update, delete: if superAdmin();
+    }
+
+    // Chat dengan admin ZUI. support/{uid} berisi ringkasan, support/{uid}/msgs isi pesan
+    // (boleh berisi foto bukti bayar yang sudah dikecilkan).
+    match /support/{cid} {
+      function okHead() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['cid', 'coName', 'byEmail', 'last', 'at', 'from', 'unread', 'seen'])
+          && d.cid == cid && d.from == 'u' && d.unread == true && d.seen == true && d.at == request.time
+          && d.coName is string && d.coName.size() <= 120
+          && d.byEmail is string && d.byEmail.size() <= 120
+          && d.last is string && d.last.size() <= 120;
+      }
+      allow read: if isMe(cid) || superAdmin();
+      allow create: if superAdmin() || (isMe(cid) && okHead());
+      allow update: if superAdmin() || (isMe(cid) && okHead())
+        || (isMe(cid) && changedOnly(['seen']) && request.resource.data.seen == true);
+      allow delete: if superAdmin();
+
+      match /msgs/{id} {
+        allow read: if isMe(cid) || superAdmin();
+        allow create: if onlyKeys(['from', 'name', 'text', 'img', 'at', 'uid'])
+          && request.resource.data.at == request.time
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.name is string && request.resource.data.name.size() <= 80
+          && request.resource.data.text is string && request.resource.data.text.size() <= 2000
+          && request.resource.data.img is string && request.resource.data.img.size() <= 400000
+          && (request.resource.data.text.size() > 0 || request.resource.data.img.size() > 0)
+          && ((isMe(cid) && request.resource.data.from == 'u')
+              || (superAdmin() && request.resource.data.from == 'a'));
+        allow update: if false;
+        allow delete: if superAdmin();
+      }
     }
 
     // ---- Data pengguna ----
@@ -63,21 +168,6 @@ service cloud.firestore {
       allow create, update: if isMe(uid)
         && onlyKeys(['nick', 'jadwal', 'kegiatan', 'rencana', 'sesi', 'mnt', 'updatedAt']);
       allow delete: if isMe(uid);
-    }
-
-    // ---- Paket ----
-    // Diaktifkan admin lewat konsol Firebase (konsol tidak terikat aturan ini)
-    // atau lewat akun dengan custom claim admin: true.
-    // Anggota grup boleh membaca paket pemilik grup, supaya anak di grup keluarga
-    // tahu apakah Premium dari orang tuanya masih aktif.
-
-    match /plans/{uid} {
-      allow read: if isMe(uid) || isAdmin() || (signedIn() && isMember(uid, request.auth.uid));
-      allow delete: if isMe(uid) || isAdmin();
-      allow create, update: if isAdmin()
-        && onlyKeys(['plan', 'until', 'note'])
-        && request.resource.data.plan in ['free', 'pelajar', 'keluarga', 'sekolah']
-        && request.resource.data.until is timestamp;
     }
 
     // ---- Grup ----
@@ -133,7 +223,7 @@ service cloud.firestore {
 
       allow delete: if isMe(gid);
 
-      match /members/{uid} {
+      match /anggota/{uid} {
         allow read: if isMe(uid) || isMe(gid);
 
         // Bergabung harus memakai kode grup yang benar, saat paket pemilik masih aktif,
@@ -173,8 +263,8 @@ service cloud.firestore {
     }
 
     // Supaya pengguna bisa mencari grup yang ia ikuti:
-    // collectionGroup('members').where('uid', '==', uidSendiri)
-    match /{path=**}/members/{uid} {
+    // collectionGroup('anggota').where('uid', '==', uidSendiri)
+    match /{path=**}/anggota/{uid} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
     }
   }
