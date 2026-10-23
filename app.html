@@ -107,11 +107,10 @@ body.noapp nav,body.noapp #tb,body.noapp #bd{display:none!important}
 #pr{display:none}@media print{body{background:#fff!important}body>*:not(#pr){display:none!important}#pr{display:block;color:#000}#pr p{white-space:pre-wrap}}
 @media(min-width:700px) and (max-width:899px){body{background:radial-gradient(circle at 20% 0,rgba(122,92,255,.12),transparent 50%),var(--bg)}}
 @media(min-width:900px){
-body{zoom:1.2;background:radial-gradient(circle at 15% 0,rgba(122,92,255,.14),transparent 45%),var(--bg)}
+body{zoom:.84;min-height:calc(100vh / .84);background:radial-gradient(circle at 15% 0,rgba(122,92,255,.14),transparent 45%) fixed,var(--bg)}
 nav{width:240px;transform:none;box-shadow:none}nav.open{box-shadow:none}#bd.show{display:none}#tb .mn{display:none}
-#tb{max-width:780px;margin:0 0 0 240px;padding:16px clamp(24px,4vw,64px) 0;box-sizing:content-box}
-main{max-width:none;margin:0 0 0 240px;padding:16px clamp(24px,4vw,64px) 80px}
-main>*{max-width:780px;margin-left:auto;margin-right:auto}
+#tb{max-width:1100px;margin:0 0 0 240px;padding:16px 40px 0;box-sizing:content-box}
+main{max-width:1100px;margin:0 0 0 240px;padding:16px 40px 80px;box-sizing:content-box}
 .fab{right:36px;bottom:36px}
 .ov{align-items:center}.sheet{max-width:520px;border-radius:28px}
 .hero{padding:30px}.hero h1{font-size:32px}
