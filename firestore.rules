@@ -79,9 +79,9 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if isMe(cid) || superAdmin();
         allow create, update: if isMe(uid) && uid == cid
-          && onlyKeys(['role', 'email'])
+          && onlyKeys(['role', 'email', 'name'])
           && request.resource.data.role == 'owner'
-          && request.resource.data.email == request.auth.token.email;
+          && request.resource.data.email == request.auth.token.email.lower();
         allow delete: if isMe(cid);
       }
     }

@@ -8,10 +8,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
 <!-- Dokumen legal ZUI Studiku, disusun mengikuti dokumen legal ZUI Kontraktor dan ZUI ERP.
      Bagian yang khusus ZUI Studiku: daftar fitur (Syarat 1), pengguna di bawah umur (Syarat 3, Privasi 7),
-     grup Keluarga dan Sekolah (Syarat 4, Privasi 8), cara bayar manual lewat WhatsApp (Syarat 5),
+     grup Keluarga dan Sekolah (Syarat 4, Privasi 8), cara bayar manual lewat menu Langganan (Syarat 5),
      data yang dikumpulkan (Privasi 1), pihak ketiga (Privasi 4), tabel paket & harga (Pengembalian Dana 2),
      dan situs aplikasi (Kontak).
-     Harga di tabel diambil dari index.html dan fungsi up() di app.html. Bila harga diubah, samakan tabel ini. -->
+     Harga di tabel sama dengan PRICE di app.html dan hargaAwal di config.js Zui Admin. Bila harga diubah di menu Harga Zui Admin, samakan tabel ini dan index.html. -->
 <style>
 :root{--bg:#f3efff;--card:#fff;--tx:#241f45;--mu:#6f6a96;--ac:#7a5cff;--ln:#e9e4fb;--note:#f6f2ff;--hero:linear-gradient(135deg,#7a5cff,#b07cff 55%,#ff8fb8)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15122b;--card:#201c40;--tx:#f2efff;--mu:#a29dcb;--ac:#a58cff;--ln:#322e5c;--note:#2a2552}}
@@ -79,15 +79,16 @@ footer{text-align:center;color:var(--mu);font-size:14px;padding:24px 0 40px}
 <li>Pemilik paket Keluarga bisa membuat grup keluarga dan membagikan kodenya ke anak, maksimal 3 anak. Anak yang bergabung mendapat fitur Premium selama paket orang tua aktif. Orang tua bisa melihat jadwal, kegiatan, rencana, dan statistik fokus anak, tetapi tidak bisa melihat catatan pelajarannya.</li>
 <li>Pemilik paket Sekolah, misalnya guru, sekolah, atau bimbel, bisa membuat kelas, membagikan kodenya ke siswa, lalu menambah tugas dan jadwal kelas. Guru tidak bisa melihat data pribadi siswa.</li>
 <li>Kode grup hanya boleh dibagikan kepada orang yang dimaksud. Pembuat grup bertanggung jawab atas isi yang ia tambahkan, seperti nama grup, tugas, dan jadwal kelas.</li>
+<li>Grup keluarga dan kelas sekolah hanya bisa dibuat selama paket Keluarga atau Sekolah aktif, tidak selama masa percobaan. Bila paket pemilik berakhir, anggota baru tidak bisa bergabung dan fitur Premium untuk anak ikut berakhir.</li>
 <li>Anggota bisa keluar dari grup kapan saja lewat tab Grup. Setelah keluar, fitur Premium yang didapat dari grup tersebut berakhir.</li>
 </ul>
 
 <h3>5. Paket dan langganan</h3>
 <ul>
-<li>Paket Gratis bisa dipakai tanpa batas waktu, dengan batas 30 catatan.</li>
-<li>Paket berbayar terdiri dari Pelajar (bulanan atau tahunan), Keluarga, serta Sekolah dan bimbel. Harga dalam Rupiah ditampilkan di halaman depan, di menu Pengaturan bagian Lihat Premium, dan di Kebijakan Pengembalian Dana. Harga paket Sekolah dan bimbel berlaku per siswa dan disepakati lebih dulu dengan kami.</li>
+<li>Akun baru mendapat masa percobaan Premium gratis selama 14 hari. Setelah itu akun memakai paket Gratis tanpa batas waktu, dengan batas 30 catatan.</li>
+<li>Paket berbayar terdiri dari Pelajar dan Keluarga, masing-masing untuk 1 bulan, 6 bulan, atau 1 tahun, serta Sekolah dan bimbel. Harga dalam Rupiah ditampilkan di halaman depan, di menu Langganan, dan di Kebijakan Pengembalian Dana. Paket Sekolah dan bimbel disepakati lebih dulu dengan kami lalu diaktifkan oleh admin.</li>
 <li>Harga bisa berubah. Perubahan harga tidak memengaruhi masa langganan yang sudah dibayar.</li>
-<li>Untuk berlangganan, masuk ke akun lalu buka Pengaturan, Lihat Premium, dan Berlangganan. Kamu akan diarahkan ke WhatsApp resmi kami atau tautan pembayaran resmi, dengan menyertakan ID akunmu. Bayar lewat QRIS atau transfer bank ke tujuan yang kami berikan, lalu kirim bukti pembayaran yang jelas.</li>
+<li>Untuk berlangganan, masuk ke akun lalu buka Pengaturan, Premium, dan Berlangganan (menu Langganan). Pilih paket dan lamanya, bayar lewat QRIS yang tertera, lalu kirim nomor referensi pembayaran lewat menu tersebut. Kamu juga bisa mengirim foto bukti bayar lewat Chat admin.</li>
 <li>Kami memeriksa pembayaran lalu mengaktifkan paket secara manual. Waktu aktivasi bergantung pada jam layanan dan tidak dijamin seketika. Masa aktif perpanjangan ditambahkan dari tanggal berakhir yang sekarang, atau dari hari aktivasi bila masa aktif sudah lewat.</li>
 <li>Tombol berlangganan tidak ditampilkan di aplikasi Android dari Google Play. Paket yang dibeli lewat versi web tetap berlaku saat kamu masuk dengan akun yang sama di aplikasi Android.</li>
 <li>Langganan tidak diperpanjang otomatis.</li>
@@ -102,7 +103,7 @@ footer{text-align:center;color:var(--mu);font-size:14px;padding:24px 0 40px}
 <ul>
 <li>Memakai layanan untuk kegiatan yang melanggar hukum, menipu, atau merundung, atau memuat konten pornografi, kekerasan, atau ujaran kebencian, termasuk di nama grup, tugas, dan jadwal kelas.</li>
 <li>Mencoba membuka data pengguna lain, bergabung ke grup tanpa izin, menembus batas paket, membobol keamanan, atau mengganggu kerja layanan.</li>
-<li>Mengirim bukti pembayaran yang dipalsukan, diubah, atau dipakai ulang.</li>
+<li>Mengirim bukti pembayaran atau nomor referensi yang dipalsukan, diubah, atau dipakai ulang.</li>
 <li>Menyalin, menjual kembali, atau menyewakan akses layanan tanpa izin tertulis dari kami.</li>
 </ul>
 
@@ -132,13 +133,13 @@ footer{text-align:center;color:var(--mu);font-size:14px;padding:24px 0 40px}
 
 <h3>1. Data yang kami kumpulkan</h3>
 <ul>
-<li><b>Data akun:</b> email dan kata sandi. Kata sandi dikelola oleh Supabase Auth dan tidak bisa kami lihat. Bila kamu masuk dengan Google, kami menerima nama dan email akun Google-mu.</li>
+<li><b>Data akun:</b> email dan kata sandi. Kata sandi dikelola oleh Firebase Authentication dari Google dan tidak bisa kami lihat. Bila kamu masuk dengan Google, kami menerima nama dan email akun Google-mu.</li>
 <li><b>Profil belajar:</b> nama panggilan, kelas, nama sekolah, alamat sekolah, dan tingkat pendidikan.</li>
 <li><b>Data belajar yang kamu masukkan:</b> jadwal, kegiatan, catatan, rencana, target fokus, serta statistik fokus berupa jumlah sesi dan menit per hari.</li>
 <li><b>Pengaturan:</b> mode tampilan, bahasa, warna tema, dan durasi timer.</li>
 <li><b>Grup:</b> nama grup, kode grup, daftar anggota, serta tugas dan jadwal kelas.</li>
-<li><b>Paket:</b> jenis paket dan masa aktifnya.</li>
-<li><b>Bantuan dan pembayaran:</b> pesan WhatsApp atau email ke tim Zui, ID akun, dan bukti pembayaran yang kamu kirim.</li>
+<li><b>Paket:</b> jenis paket, masa aktif, dan tanggal akun dibuat (untuk menghitung masa percobaan).</li>
+<li><b>Bantuan dan pembayaran:</b> permintaan langganan (paket, jumlah, dan nomor referensi pembayaran), pesan dan foto yang kamu kirim lewat Chat admin, serta pesan WhatsApp atau email ke tim Zui.</li>
 <li><b>Data di perangkat:</b> tanpa akun, semua data di atas hanya disimpan di browser perangkatmu, bukan di server kami. Dengan akun, salinannya juga disimpan di browser bersama cache terjemahan.</li>
 </ul>
 <p>Kami tidak mengumpulkan lokasi, kontak, foto, atau ID iklan.</p>
@@ -148,27 +149,26 @@ footer{text-align:center;color:var(--mu);font-size:14px;padding:24px 0 40px}
 <li>Menjalankan fitur layanan, seperti menyimpan dan menyinkronkan data antarperangkat, menghitung tenggat, dan menampilkan statistik fokus.</li>
 <li>Memverifikasi email dan membantu atur ulang kata sandi.</li>
 <li>Menjalankan grup Keluarga dan kelas Sekolah.</li>
-<li>Mengelola paket dan langganan, termasuk memeriksa bukti pembayaran.</li>
+<li>Mengelola masa percobaan, paket, dan langganan, termasuk memeriksa pembayaran.</li>
 <li>Menjawab pertanyaan dan permintaan bantuan darimu.</li>
 <li>Menjaga keamanan layanan.</li>
 </ul>
 <p>Kami tidak menjual data pribadi, tidak menampilkan iklan, dan tidak memakai data untuk iklan.</p>
 
 <h3>3. Tempat penyimpanan dan keamanan</h3>
-<p>Data akun disimpan di layanan Supabase (Auth dan basis data), sehingga server penyimpanannya bisa berada di luar Indonesia. Aturan akses di basis data membuat data belajarmu hanya bisa dibuka oleh akunmu sendiri, kecuali bagian yang dibagikan lewat grup seperti dijelaskan di bagian 8. Koneksi ke layanan dienkripsi dengan HTTPS. Sesi masuk tetap aktif di perangkat sampai kamu memilih Keluar.</p>
+<p>Data akun disimpan di layanan Google Firebase (Authentication dan Cloud Firestore), sehingga server penyimpanannya bisa berada di luar Indonesia. Aturan akses di basis data membuat data belajarmu hanya bisa dibuka oleh akunmu sendiri, kecuali bagian yang dibagikan lewat grup seperti dijelaskan di bagian 8. Koneksi ke layanan dienkripsi dengan HTTPS. Sesi masuk tetap aktif di perangkat sampai kamu memilih Keluar.</p>
 
 <h3>4. Berbagi data</h3>
 <p>Kami hanya berbagi data dengan:</p>
 <ul>
-<li>Supabase, sebagai penyedia penyimpanan data dan login.</li>
-<li>Google, sebagai penyedia login dengan Google, huruf (Google Fonts), dan Google Play bila kamu memasang aplikasi Android.</li>
-<li>GitHub, sebagai penyedia hosting halaman aplikasi (GitHub Pages), dan jsDelivr, yang menyajikan pustaka Supabase.</li>
+<li>Google, sebagai penyedia penyimpanan data dan login (Firebase), login dengan Google, huruf (Google Fonts), dan Google Play bila kamu memasang aplikasi Android.</li>
+<li>GitHub, sebagai penyedia hosting halaman aplikasi (GitHub Pages).</li>
 <li>MyMemory (Translated), yang menerima teks yang kamu tulis di fitur Translate, serta teks antarmuka aplikasi saat kamu memilih bahasa selain Indonesia. Isi catatan dan data belajarmu tidak dikirim saat aplikasi berganti bahasa. Jangan menulis data pribadi di fitur Translate.</li>
 <li>WhatsApp, bila kamu menghubungi kami lewat WhatsApp untuk berlangganan atau meminta bantuan.</li>
 <li>Orang tua di grup Keluarga dan guru di kelas Sekolah, sebatas yang dijelaskan di bagian 8.</li>
 <li>Pihak berwenang, bila diwajibkan oleh hukum.</li>
 </ul>
-<p>Pengelola teknis bisa membuka basis data lewat dasbor Supabase hanya bila diperlukan untuk pemeliharaan, mengaktifkan paket, atau saat kamu meminta bantuan.</p>
+<p>Admin Zui bisa melihat nama dan email akun, status paket, permintaan langganan, dan percakapan Chat admin, termasuk foto yang kamu kirim. Data belajar seperti jadwal, kegiatan, catatan, dan grup tidak ditampilkan di panel admin. Pengelola teknis bisa membuka basis data lewat konsol Firebase hanya bila diperlukan untuk pemeliharaan atau saat kamu meminta bantuan.</p>
 
 <h3>5. Hakmu</h3>
 <p>Kamu berhak meminta salinan data pribadimu, memperbaiki data yang salah, menghapus data, dan menarik persetujuan. Sebagian besar bisa kamu lakukan sendiri di aplikasi, termasuk mengubah profil, menghapus catatan, dan mengekspor catatan ke PDF. Untuk permintaan lain, kirim email ke alamat di bawah. Kami akan menanggapi paling lambat 14 hari kerja sejak permintaan diterima.</p>
@@ -200,26 +200,29 @@ footer{text-align:center;color:var(--mu);font-size:14px;padding:24px 0 40px}
 <p class="note">Langganan yang sudah aktif bersifat final. Langganan tidak dapat dibatalkan dan pembayarannya tidak dapat dikembalikan, kecuali karena kesalahan pembayaran pada bagian 3.</p>
 
 <h3>1. Coba dulu sebelum membayar</h3>
-<p>Semua fitur utama bisa dipakai gratis tanpa batas waktu, dengan batas 30 catatan. Kami menyarankan kamu memakai paket Gratis lebih dulu untuk memastikan layanan sesuai kebutuhan sebelum berlangganan.</p>
+<p>Setiap akun baru mendapat masa percobaan Premium gratis 14 hari, tanpa pembayaran. Setelah itu semua fitur utama tetap bisa dipakai gratis dengan batas 30 catatan. Kami menyarankan kamu memakai masa ini untuk memastikan layanan sesuai kebutuhan sebelum berlangganan.</p>
 
 <h3>2. Paket dan harga</h3>
 <div class="tw"><table>
 <thead><tr><th>Paket</th><th>Harga</th><th>Isi</th></tr></thead>
 <tbody>
 <tr><td>Gratis</td><td>Rp0</td><td>Jadwal, kegiatan, rencana, fokus, kalkulator, translate, hingga 30 catatan</td></tr>
-<tr><td>Pelajar 1 bulan</td><td>Rp19.000</td><td rowspan="2">Catatan tanpa batas, ekspor catatan ke PDF, statistik fokus mingguan, warna tema eksklusif</td></tr>
+<tr><td>Pelajar 1 bulan</td><td>Rp19.000</td><td rowspan="3">Catatan tanpa batas, ekspor catatan ke PDF, statistik fokus mingguan, warna tema eksklusif</td></tr>
+<tr><td>Pelajar 6 bulan</td><td>Rp95.000</td></tr>
 <tr><td>Pelajar 1 tahun</td><td>Rp149.000</td></tr>
-<tr><td>Keluarga 1 bulan</td><td>Rp39.000</td><td>Sampai 3 anak, orang tua memantau jadwal dan tugas, semua fitur Premium untuk anak</td></tr>
+<tr><td>Keluarga 1 bulan</td><td>Rp39.000</td><td rowspan="3">Sampai 3 anak, orang tua memantau jadwal dan tugas, semua fitur Premium untuk anak</td></tr>
+<tr><td>Keluarga 6 bulan</td><td>Rp195.000</td></tr>
+<tr><td>Keluarga 1 tahun</td><td>Rp390.000</td></tr>
 <tr><td>Sekolah dan bimbel</td><td>Mulai Rp5.000 per siswa per bulan</td><td>Minimal 30 siswa, tugas dan jadwal kelas bersama, sesuai kesepakatan</td></tr>
 </tbody></table></div>
-<p>Harga yang berlaku adalah harga yang kami sampaikan saat kamu mengajukan langganan. Langganan tidak diperpanjang otomatis, jadi tidak ada tagihan berulang tanpa persetujuanmu.</p>
+<p>Harga yang berlaku adalah harga yang tertera di menu Langganan saat kamu mengajukan langganan. Langganan tidak diperpanjang otomatis, jadi tidak ada tagihan berulang tanpa persetujuanmu.</p>
 
 <h3>3. Pengecualian: kesalahan pembayaran</h3>
 <p>Pengembalian dana hanya berlaku untuk kesalahan pembayaran berikut, bila diajukan paling lambat 7 hari setelah pembayaran:</p>
 <ul>
 <li><b>Pembayaran ganda:</b> kamu membayar dua kali untuk pesanan yang sama. Kelebihannya dikembalikan penuh.</li>
 <li><b>Kelebihan bayar:</b> jumlah yang dibayar lebih besar dari harga pesanan. Selisihnya dikembalikan.</li>
-<li><b>Langganan tidak diaktifkan:</b> paket belum aktif dalam 3 × 24 jam setelah kamu mengirim bukti pembayaran yang benar, dan kamu memilih membatalkan. Pembayaran dikembalikan penuh.</li>
+<li><b>Langganan tidak diaktifkan:</b> paket belum aktif dalam 3 × 24 jam setelah kamu mengirim nomor referensi atau bukti pembayaran yang benar, dan kamu memilih membatalkan. Pembayaran dikembalikan penuh.</li>
 </ul>
 
 <h3>4. Pembayaran yang tidak bisa dikembalikan</h3>
@@ -228,16 +231,16 @@ footer{text-align:center;color:var(--mu);font-size:14px;padding:24px 0 40px}
 <li>Sisa masa langganan bila kamu berhenti memakai layanan di tengah periode, termasuk bila anak keluar dari grup Keluarga.</li>
 <li>Penggantian ke paket yang lebih pendek atau lebih murah selama masa langganan.</li>
 <li>Akun yang ditutup karena melanggar Syarat Layanan.</li>
-<li>Pembayaran yang dikirim ke tujuan selain yang kami berikan lewat WhatsApp resmi atau tautan pembayaran resmi.</li>
-<li>Pengajuan dengan bukti pembayaran yang dipalsukan, diubah, atau dipakai ulang.</li>
+<li>Pembayaran yang dikirim ke tujuan selain QRIS di menu Langganan atau tujuan yang kami berikan lewat Chat admin atau WhatsApp resmi.</li>
+<li>Pengajuan dengan bukti pembayaran atau nomor referensi yang dipalsukan, diubah, atau dipakai ulang.</li>
 </ul>
 <p>Untuk paket Sekolah dan bimbel, ketentuan dalam kesepakatan tertulis berlaku lebih dulu bila ada.</p>
 
 <h3>5. Cara mengajukan</h3>
-<p>Kirim email ke <b><a href="mailto:support@zuisystem.com">support@zuisystem.com</a></b> dengan judul “Pengembalian Dana”, atau tulis lewat WhatsApp resmi kami, dan sertakan:</p>
+<p>Kirim email ke <b><a href="mailto:support@zuisystem.com">support@zuisystem.com</a></b> dengan judul “Pengembalian Dana”, atau tulis lewat Chat admin di aplikasi atau WhatsApp resmi kami, dan sertakan:</p>
 <ul>
 <li>email akun dan ID akun,</li>
-<li>tanggal dan jumlah pembayaran, serta bukti pembayarannya,</li>
+<li>tanggal, jumlah, dan nomor referensi pembayaran, serta bukti pembayarannya,</li>
 <li>alasan pengajuan,</li>
 <li>nama bank atau e-wallet, nomor rekening, dan nama pemilik rekening untuk menerima dana.</li>
 </ul>
