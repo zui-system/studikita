@@ -162,7 +162,7 @@ var h=await db.doc('support/'+UID).get();HEAD=h.exists?h.data():null}catch(e){co
 var CR=0;
 async function ci(){CI=[];MK={};NL={};if(!db||!UID)return;try{var g=MG.filter(function(x){return x.kind==='sekolah'});for(var i=0;i<g.length;i++){var gid=g[i].id,r=await db.collection('groups/'+gid+'/items').get();r.docs.forEach(function(d){var x=d.data();CI.push(Object.assign({},x.data,{ck:x.kind,gid:gid,iid:d.id,mapel:x.mapel||''}))})}
 if(g.length){var m=await db.collectionGroup('selesai').where('uid','==',UID).get();m.docs.forEach(function(d){var it=d.ref.parent.parent;MK[it.parent.parent.id+'/'+it.id]=1});
-var nl=await db.collectionGroup('nilai').where('uid','==',UID).get();nl.docs.forEach(function(d){var it=d.ref.parent.parent;NL[it.parent.parent.id+'/'+it.id]=d.data().nilai})}}catch(e){console.warn(e)}}
+var nl=await db.collectionGroup('nilai').where('uid','==',UID).get();nl.docs.forEach(function(d){var it=d.ref.parent.parent;NL[it.parent.parent.id+'/'+it.id]=d.data().nilai})}}catch(e){console.warn(e)}await waliSync()}
 async function cr(){if(!UID||Date.now()-CR<60000)return;CR=Date.now();var n=JSON.stringify(CI);await ci();if(JSON.stringify(CI)!==n&&(tab==='home'||tab==='jadwal'))go(tab)}
 function kj(d){return CI.filter(function(x){return x.ck==='jadwal'&&x.hari===D[d]}).sort(function(a,b){return(a.mulai||'').localeCompare(b.mulai||'')}).map(function(x){return'<div class="card" style="cursor:default"><div class="tm">'+esc(x.mulai)+'<br><span style="color:var(--mu);font-weight:600">'+esc(x.selesai)+'</span></div><div class="b"><div class="t">'+esc(x.judul)+'</div><div class="s">Jadwal kelas</div></div></div>'}).join('')}
 function kdone(x){return!!MK[x.gid+'/'+x.iid]}
@@ -202,6 +202,7 @@ async function csend(){var t=$('#ctx').value.trim(),img=SIMG;if(!t&&!img)return;
 $('#ctx').value='';SIMG='';$('#cimg').textContent='';try{await b.commit()}catch(e){$('#ctx').value=t;$('#cimg').textContent='Gagal mengirim. Periksa koneksi internet.'}}
 async function hapusData(){try{var sd=await db.collectionGroup('selesai').where('uid','==',UID).get();await delAll(sd.docs)}catch(e){console.warn(e)}
 for(var cg of['nilai','pengajar','guru']){try{var q=await db.collectionGroup(cg).where('uid','==',UID).get();await delAll(q.docs)}catch(e){console.warn(e)}}
+for(var w=0;w<MG.length;w++)await waliHapus(MG[w].id);
 var m=await db.collectionGroup('anggota').where('uid','==',UID).get();
 for(var i=0;i<m.docs.length;i++){var gref=m.docs[i].ref.parent.parent,b=db.batch();b.delete(m.docs[i].ref);if((await gref.get()).exists)b.update(gref,{count:firebase.firestore.FieldValue.increment(-1)});await b.commit()}
 var og=await myGroups();for(var j=0;j<og.length;j++)await gdrop(og[j]);
@@ -243,7 +244,7 @@ function gcode(){var A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',r=new Uint32Array(8),s
 /* jenis grup yang boleh dibuat: masa percobaan dan gratis selamanya membuka keduanya */
 function kinds(){if(!UID||role()!=='ortu')return[];return PLN==='trial'||PLN==='keluarga'||PLN==='sekolah'?['keluarga']:[]}
 async function gnew(){var n=$('#gn').value.trim().slice(0,60);if(!n)return;var kind=$('#gkind')?$('#gkind').value:kinds().filter(function(k){return k!=='keluarga'||!OG.some(function(g){return g.kind==='keluarga'})})[0];if(!kind)return;for(var i=0;i<3;i++){var k=gcode(),ref=kind==='keluarga'?db.doc('groups/'+UID):db.collection('groups').doc(),b=db.batch();b.set(ref,{name:n,kind:kind,ownerId:UID,code:k,count:0,createdAt:SV()});b.set(db.doc('codes/'+k),{gid:ref.id});try{await b.commit();go('grup');return}catch(e){}}$('#gx').textContent='Gagal membuat grup. Pastikan paketmu masih aktif.'}
-async function gleave(id){if(!confirm('Keluar dari grup ini?'))return;var dl=CI.filter(function(x){return x.gid===id&&kdone(x)});for(var i=0;i<dl.length;i++)await db.doc('groups/'+id+'/items/'+dl[i].iid+'/selesai/'+UID).delete().catch(function(){});
+async function gleave(id){if(!confirm('Keluar dari grup ini?'))return;await waliHapus(id);var dl=CI.filter(function(x){return x.gid===id&&kdone(x)});for(var i=0;i<dl.length;i++)await db.doc('groups/'+id+'/items/'+dl[i].iid+'/selesai/'+UID).delete().catch(function(){});
 var b=db.batch();b.delete(db.doc('groups/'+id+'/anggota/'+UID));b.update(db.doc('groups/'+id),{count:firebase.firestore.FieldValue.increment(-1)});try{await b.commit()}catch(e){}await plan();await ci();th();go('grup')}
 async function delAll(docs){for(var j=0;j<docs.length;j+=400){var b=db.batch();docs.slice(j,j+400).forEach(function(d){b.delete(d.ref)});await b.commit()}}
 async function gdel(gid,id){try{var r=await db.collection('groups/'+gid+'/items/'+id+'/selesai').get();await delAll(r.docs);await db.doc('groups/'+gid+'/items/'+id).delete()}catch(e){}go('grup')}
@@ -251,6 +252,7 @@ async function gdel(gid,id){try{var r=await db.collection('groups/'+gid+'/items/
 async function gdrop(g){await db.doc('groups/'+g.id).update({closed:true});var it=(await db.collection('groups/'+g.id+'/items').get()).docs;
 for(var i=0;i<it.length;i++)await delAll((await it[i].ref.collection('selesai').get()).docs.concat((await it[i].ref.collection('nilai').get()).docs));
 await delAll((await db.collection('groups/'+g.id+'/pengajar').get()).docs);
+var ch=(await db.collection('groups/'+g.id+'/chat').get()).docs;for(var c=0;c<ch.length;c++)await delAll((await ch[c].ref.collection('msgs').get()).docs);await delAll(ch.concat((await db.collection('groups/'+g.id+'/wali').get()).docs));
 await delAll(it.concat((await db.collection('groups/'+g.id+'/anggota').get()).docs));var b=db.batch();b.delete(db.doc('groups/'+g.id));b.delete(db.doc('codes/'+g.code));await b.commit()}
 async function ghapus(gid){var g=OG.filter(function(x){return x.id===gid})[0];if(!g||!confirm('Hapus kelas "'+g.name+'" beserta semua tugas dan jadwalnya? Siswa akan keluar dari kelas ini.'))return;try{await gdrop(g)}catch(e){alert('Gagal menghapus kelas. Periksa koneksi internet lalu coba lagi.')}go('grup')}
 async function kadd(o){if(!o.judul||!GID)return;try{await db.collection('groups/'+GID+'/items').add({kind:o.kind==='Tugas'?'tugas':'jadwal',data:o,createdAt:SV()})}catch(e){alert('Gagal menyimpan. Pastikan paket Sekolah masih aktif.')}cl();go('grup')}
@@ -441,8 +443,8 @@ var b=db.batch();b.set(db.doc('groups/'+gid+'/anggota/'+UID),{uid:UID,code:k,joi
 
 /* ===== menu per peran ===== */
 var RTABS={murid:[['home','Beranda','🏠'],['jadwal','Jadwal','🗓️'],['kegiatan','Tugas dan kegiatan','✅'],['nilai','Nilai','📊'],['catatan','Catatan','📒'],['rencana','Rencana','🎯'],['fokus','Fokus','⏱️'],['grup','Kelasku','👥'],['info','Pengumuman','📣'],['kalk','Kalkulator','🧮'],['tr','Translate','🌐']],
-ortu:[['grup','Keluarga','👨‍👩‍👧'],['info','Pengumuman','📣']],
-guru:[['home','Beranda','🏠'],['gkelas','Kelas dan mapel','🏫'],['beri','Beri tugas','➕'],['gnilai','Penilaian','📝'],['ginfo','Pengumuman','📣'],['gpesan','Pesan sekolah','✉️'],['gsek','Sekolah','🏛️']],
+ortu:[['anak','Pantau anak','👀'],['opesan','Pesan guru','✉️'],['info','Pengumuman','📣'],['grup','Keluarga','👨‍👩‍👧']],
+guru:[['home','Beranda','🏠'],['gkelas','Kelas dan mapel','🏫'],['beri','Beri tugas','➕'],['gnilai','Penilaian','📝'],['ginfo','Pengumuman','📣'],['gpesan','Pesan sekolah','✉️'],['gortu','Pesan orang tua','💬'],['gsek','Sekolah','🏛️']],
 sekolah:[['home','Dasbor','📈'],['skelas','Kelas','🏫'],['sguru','Guru','🧑‍🏫'],['sinfo','Pengumuman','📣'],['spesan','Pesan guru','✉️'],['sprog','Program','🎯']]};
 function tabsOf(){return RTABS[role()]}
 function okTab(t){return tabsOf().some(function(x){return x[0]===t})||(t==='grup'&&role()==='guru')}
@@ -569,9 +571,57 @@ else{var n=$('#pn').value.trim();if(!n){$('#px').textContent='Isi nama program.'
 try{if(id)await db.doc('schools/'+UID+'/program/'+id).set(d);else await db.collection('schools/'+UID+'/program').add(d);go('sprog')}catch(e){alert('Gagal menyimpan program.')}}
 async function progHapus(id){if(!confirm('Hapus program ini?'))return;await db.doc('schools/'+UID+'/program/'+id).delete().catch(function(){});go('sprog')}
 
+
+/* ===== tahap 2: pantauan orang tua dan pesan orang tua dengan guru ===== */
+var OD=null,OCH='',GCH='',CHM=[],WS={},CHA='';
+/* murid: catat orang tua (pemilik grup keluarga yang diikuti) di tiap kelas sekolah yang diikuti */
+async function waliSync(){if(role()!=='murid')return;var kl=MG.filter(function(g){return g.kind==='sekolah'}),fm=MG.filter(function(g){return g.kind==='keluarga'});
+for(var i=0;i<kl.length;i++)for(var j=0;j<fm.length;j++){var k=kl[i].id+'/'+fm[j].id;if(WS[k])continue;try{await db.doc('groups/'+kl[i].id+'/wali/'+fm[j].id).set({anak:UID,nick:String(kl[i].nick||PRF&&PRF.nama||S.n||'Siswa').slice(0,60),at:SV()});WS[k]=1}catch(e){console.warn(e)}}}
+async function waliHapus(gid){var g=MG.filter(function(x){return x.id===gid})[0];if(!g)return;var kl=g.kind==='sekolah'?[g]:MG.filter(function(x){return x.kind==='sekolah'}),fm=g.kind==='keluarga'?[g]:MG.filter(function(x){return x.kind==='keluarga'});
+for(var i=0;i<kl.length;i++)for(var j=0;j<fm.length;j++){await db.doc('groups/'+kl[i].id+'/wali/'+fm[j].id).delete().catch(function(){});delete WS[kl[i].id+'/'+fm[j].id]}}
+/* orang tua: kelas, tugas, tanda selesai, dan nilai anak, langsung dari data kelas dan guru */
+async function ortuLoad(){var t={kids:[]},an=await db.collection('groups/'+UID+'/anggota').get().catch(function(){return{docs:[]}});
+for(var i=0;i<an.docs.length;i++){var u=an.docs[i].id,p=await db.doc('pantau/'+u).get().catch(function(){return null}),k={uid:u,nick:an.docs[i].data().nick||p&&p.exists&&p.data().nick||'Anak',kls:[],sel:{},nil:{}};
+var r=await Promise.all([db.collectionGroup('anggota').where('uid','==',u).get(),db.collectionGroup('selesai').where('uid','==',u).get(),db.collectionGroup('nilai').where('uid','==',u).get()]);
+r[1].docs.forEach(function(d){var it=d.ref.parent.parent;k.sel[it.parent.parent.id+'/'+it.id]=1});r[2].docs.forEach(function(d){var it=d.ref.parent.parent;k.nil[it.parent.parent.id+'/'+it.id]=d.data().nilai});
+for(var j=0;j<r[0].docs.length;j++){var gid=r[0].docs[j].ref.parent.parent.id;if(gid===UID)continue;try{var g=await db.doc('groups/'+gid).get();if(!g.exists||g.data().kind!=='sekolah')continue;
+var it=(await db.collection('groups/'+gid+'/items').get()).docs.map(function(d){return Object.assign({id:d.id},d.data())}).filter(function(x){return x.kind==='tugas'}).sort(function(a,b){return(b.data.tgl||'').localeCompare(a.data.tgl||'')});
+var pj=(await db.collection('groups/'+gid+'/pengajar').get()).docs.map(function(d){return d.data()});k.kls.push({gid:gid,name:g.data().name,it:it,pj:pj})}catch(e){k.wait=1}}t.kids.push(k)}OD=t}
+function oStat(k,g,x){var key=g.gid+'/'+x.id,n=k.nil[key];return n!=null?pill('Nilai '+n,'ok'):k.sel[key]?pill('Selesai'):x.data.tgl&&left(x.data.tgl)<0?pill('Terlambat','er'):pill('Belum','wa')}
+function ortuAnak(){if(!OD.kids.length)return'<div class="top"><h2>Pantau anak</h2></div>'+empty('Belum ada anak yang bergabung. Buat grup di menu Keluarga dan bagikan kodenya ke anak.');
+return'<div class="top"><h2>Pantau anak</h2></div>'+OD.kids.map(function(k){var all=[],nv=[],mp={};k.kls.forEach(function(g){g.it.forEach(function(x){all.push([g,x]);var n=k.nil[g.gid+'/'+x.id];if(n!=null){nv.push(n);(mp[x.mapel||'Lainnya']=mp[x.mapel||'Lainnya']||[]).push(n)}})});
+var dn=all.filter(function(o){var key=o[0].gid+'/'+o[1].id;return k.sel[key]||k.nil[key]!=null}).length,bl=all.filter(function(o){var key=o[0].gid+'/'+o[1].id;return!k.sel[key]&&k.nil[key]==null});
+return'<div class="card wcard"><b style="font-size:18px">'+esc(k.nick)+'</b><div class="s">'+(k.kls.map(function(g){return esc(g.name)}).join(', ')||'Belum terlihat di kelas sekolah')+'</div>'
++(k.kls.length?'<div class="stats" style="margin-top:10px"><div class="st"><b>'+dn+'/'+all.length+'</b><span>tugas dikerjakan</span></div><div class="st"><b>'+(avg(nv)==null?'-':avg(nv))+'</b><span>rata-rata nilai</span></div></div>'
++(bl.length?'<div class="sec" style="margin-left:0">Belum dikerjakan</div>'+bl.map(function(o){return'<div class="it"><div class="b"><div class="t">'+esc(o[1].data.judul)+'</div><div class="s">'+esc(o[1].mapel||'')+(o[1].data.guru?' · '+esc(o[1].data.guru):'')+' · '+cd(o[1].data.tgl)+'</div></div>'+oStat(k,o[0],o[1])+'</div>'}).join(''):'')
++(Object.keys(mp).length?'<div class="sec" style="margin-left:0">Nilai per mapel</div>'+Object.keys(mp).sort().map(function(m){return'<div class="it"><div class="b"><div class="t">'+esc(m)+'</div><div class="s">'+mp[m].length+' tugas dinilai</div></div><b class="nv">'+avg(mp[m])+'</b></div>'}).join(''):'')
++'<div class="sec" style="margin-left:0">Semua tugas</div>'+all.map(function(o){return'<div class="it"><div class="b"><div class="t">'+esc(o[1].data.judul)+'</div><div class="s">'+esc(o[0].name)+' · '+esc(o[1].mapel||'')+' · '+cd(o[1].data.tgl)+'</div></div>'+oStat(k,o[0],o[1])+'</div>'}).join('')
+:'<p class="rhint">Kelas dan nilai muncul setelah anak bergabung ke kelas dan ke grup keluarga, lalu membuka aplikasinya sekali.</p>')+'</div>'}).join('')}
+/* pesan orang tua dan guru: groups/{gid}/chat/{uidOrtu_uidGuru}/msgs */
+async function chLoad(gid,o,g){CHM=(await db.collection('groups/'+gid+'/chat/'+o+'_'+g+'/msgs').orderBy('at','asc').limitToLast(200).get()).docs.map(function(d){return d.data()})}
+function chView(me,gid,o,g,anak,ket){CHA=anak;return'<div class="card wcard"><p class="rhint" style="margin:0 0 8px">'+ket+'</p><div class="msgs">'+(CHM.map(function(m){var mine=m.dari===me;return'<div class="bub'+(mine?' me':'')+'">'+esc(m.t)+'<small>'+(mine?'Kamu':m.dari==='guru'?'Guru':'Orang tua')+' · '+tgl(m.at)+'</small></div>'}).join('')||'<p class="s">Belum ada pesan.</p>')+'</div><div class="row" style="flex-wrap:nowrap"><textarea id="ct" maxlength="2000" style="min-height:48px;margin:0;flex:1;min-width:0" placeholder="Tulis pesan"></textarea><button class="btn" style="flex:none" onclick="chKirim(\''+me+'\',\''+gid+'\',\''+o+'\',\''+g+'\')">Kirim</button></div><p id="cx" class="rhint"></p></div>'}
+async function chKirim(me,gid,o,g){var anak=CHA;var t=$('#ct').value.trim();if(!t)return;var b=db.batch(),tid=o+'_'+g;b.set(db.collection('groups/'+gid+'/chat/'+tid+'/msgs').doc(),{dari:me,t:t.slice(0,2000),uid:UID,at:SV()});b.set(db.doc('groups/'+gid+'/chat/'+tid),{ortu:o,guru:g,anak:String(anak).slice(0,60),last:t.slice(0,120),dari:me,at:SV()});
+try{await b.commit();go(tab)}catch(e){$('#cx').textContent='Gagal mengirim pesan.'}}
+function oPairs(){var a=[];OD.kids.forEach(function(k){k.kls.forEach(function(g){g.pj.forEach(function(p){a.push({k:k,g:g,p:p,key:g.gid+'|'+p.uid+'|'+k.uid})})})});return a}
+async function ortuPesanLoad(){await ortuLoad();OD.head={};var gs={};OD.kids.forEach(function(k){k.kls.forEach(function(g){gs[g.gid]=1})});
+for(var gid in gs){try{(await db.collection('groups/'+gid+'/chat').where('ortu','==',UID).get()).docs.forEach(function(d){OD.head[gid+'|'+d.data().guru]=d.data()})}catch(e){}}
+var pr=oPairs();if(pr.length){var cur=pr.filter(function(o){return o.key===OCH})[0]||pr[0];OCH=cur.key;await chLoad(cur.g.gid,UID,cur.p.uid)}}
+function ortuPesan(){var pr=oPairs();if(!pr.length)return'<div class="top"><h2>Pesan guru</h2></div>'+empty('Belum ada guru yang bisa dihubungi. Guru muncul setelah anak bergabung ke kelas sekolah dan grup keluarga, lalu membuka aplikasinya.');var cur=pr.filter(function(o){return o.key===OCH})[0]||pr[0];
+return'<div class="top"><h2>Pesan guru</h2></div><div class="chips">'+pr.map(function(o){var h=OD.head[o.g.gid+'|'+o.p.uid];return'<button aria-pressed="'+(o.key===cur.key)+'" onclick="OCH=\''+o.key+'\';go(\'opesan\')">'+esc(o.p.nama)+' · '+esc(o.p.mapel.join(', '))+' · '+esc(o.g.name)+(h&&h.dari==='guru'?' •':'')+'</button>'}).join('')+'</div>'
++chView('ortu',cur.g.gid,UID,cur.p.uid,cur.k.nick,'Pesan pribadi tentang '+esc(cur.k.nick)+' dengan '+esc(cur.p.nama)+'. Nomor HP tidak ditampilkan, dan sekolah atau orang lain tidak bisa membacanya.')}
+/* guru: daftar orang tua murid di kelas yang diajar */
+async function guruOrtuLoad(){await guruLoad();GD.wali=[];GD.head={};for(var i=0;i<GD.kls.length;i++){var k=GD.kls[i];try{(await db.collection('groups/'+k.gid+'/wali').get()).docs.forEach(function(d){GD.wali.push({gid:k.gid,kelas:k.name,pid:d.id,nick:d.data().nick,key:k.gid+'|'+d.id})});
+(await db.collection('groups/'+k.gid+'/chat').where('guru','==',UID).get()).docs.forEach(function(d){GD.head[k.gid+'|'+d.data().ortu]=d.data()})}catch(e){console.warn(e)}}
+GD.wali.sort(function(a,b){var ha=GD.head[a.key],hb=GD.head[b.key];return tms(hb&&hb.at)-tms(ha&&ha.at)||a.nick.localeCompare(b.nick)});
+if(GD.wali.length){var cur=GD.wali.filter(function(w){return w.key===GCH})[0]||GD.wali[0];GCH=cur.key;await chLoad(cur.gid,cur.pid,UID)}}
+function guruOrtu(){if(!GD.wali.length)return'<div class="top"><h2>Pesan orang tua</h2></div>'+empty('Belum ada orang tua yang terhubung. Orang tua muncul setelah murid bergabung ke grup keluarga orang tuanya.');var cur=GD.wali.filter(function(w){return w.key===GCH})[0]||GD.wali[0];
+return'<div class="top"><h2>Pesan orang tua</h2></div><div class="chips">'+GD.wali.map(function(w){var h=GD.head[w.key];return'<button aria-pressed="'+(w.key===cur.key)+'" onclick="GCH=\''+w.key+'\';go(\'gortu\')">Orang tua '+esc(w.nick)+' · '+esc(w.kelas)+(h&&h.dari==='ortu'?' •':'')+'</button>'}).join('')+'</div>'
++chView('guru',cur.gid,cur.pid,UID,cur.nick,'Pesan pribadi dengan orang tua '+esc(cur.nick)+' ('+esc(cur.kelas)+'). Nomor HP tidak ditampilkan.')}
+
 /* tampilan per peran untuk tab yang dimuat dari Firestore */
-function roleView(t){var r=role();if(r==='guru'&&t==='home')return pg();if(r==='sekolah'&&t==='home')return pg();if(/^(gkelas|beri|gnilai|gsek|skelas|sguru|ginfo|gpesan|sinfo|spesan|sprog|info)$/.test(t))return pg();if(t==='nilai')return nilaiMurid();return null}
+function roleView(t){var r=role();if(r==='guru'&&t==='home')return pg();if(r==='sekolah'&&t==='home')return pg();if(/^(gkelas|beri|gnilai|gsek|skelas|sguru|ginfo|gpesan|sinfo|spesan|sprog|info|anak|opesan|gortu)$/.test(t))return pg();if(t==='nilai')return nilaiMurid();return null}
 function roleLoad(t){var r=role();
+if(r==='ortu'&&t==='anak')return pgRun(ortuLoad,ortuAnak);if(r==='ortu'&&t==='opesan')return pgRun(ortuPesanLoad,ortuPesan);if(r==='guru'&&t==='gortu')return pgRun(guruOrtuLoad,guruOrtu);
 if(t==='info'&&(r==='murid'||r==='ortu'))return pgRun(async function(){await infoLoad(r==='ortu'?await sekOrtu():sekMurid())},infoView);
 if(r==='guru'){var f={home:guruHome,gkelas:guruKelas,beri:guruBeri,gnilai:guruNilai,gsek:guruSek,ginfo:guruInfo,gpesan:guruPesan}[t];if(f)pgRun(async function(){await guruLoad();if(t==='gsek')OG=await myGroups().catch(function(){return[]});
 if(GD.sch&&(t==='ginfo'||t==='home'))await infoLoad([GD.sch.id]);if(GD.sch&&t==='gpesan')await msgLoad(GD.sch.id,UID)},f)}

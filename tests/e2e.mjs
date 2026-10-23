@@ -208,13 +208,37 @@ try {
   ok(await g.locator('#pg >> text=PTS 3 sampai 7 November').isVisible(), 'guru melihat pengumuman terbaru di Beranda');
   const o = await halaman({ hp: true });
   await daftar(o, 'Orang tua', { nama: 'Sari Rahayu', hp: '081255556666', anak: '1', alamat: 'Bandung' }, 'sari@ortu.id');
+  ok(await o.locator('#pg >> text=Belum ada anak yang bergabung').isVisible(), 'orang tua langsung masuk ke Pantau anak');
+  await menu(o, 'Keluarga');
   await o.fill('#gn', 'Keluarga Andi'); await o.click('#gr >> button:text-is("Buat")'); await o.waitForSelector('#gr >> text=Kode untuk dibagikan');
   const kodeKel = (await o.locator('#gr .s b').first().innerText()).trim();
   await menu(m, 'Kelasku'); await m.fill('#gc', kodeKel); await m.click('#gr >> button:has-text("Gabung")'); await m.waitForSelector('#gr >> text=Keluarga Andi');
   await m.waitForTimeout(1500);
   await menu(o, 'Pengumuman');
   ok(await o.locator('#pg >> text=PTS 3 sampai 7 November').isVisible(), 'orang tua melihat pengumuman sekolah anaknya');
-  ok((await o.locator('#nav button').allInnerTexts()).length === 3, 'menu orang tua: Keluarga, Pengumuman, Pengaturan');
+  ok((await o.locator('#nav button').allInnerTexts()).map((x) => x.replace(/^\W+/u, '')).join(', ') === 'Pantau anak, Pesan guru, Pengumuman, Keluarga, Pengaturan', 'menu orang tua lengkap');
+
+  console.log('Tahap 2: orang tua memantau tugas dan nilai anak');
+  await menu(o, 'Pantau anak');
+  ok(await o.locator('#pg >> text=Andi Saputra').first().isVisible() && await o.locator('#pg >> text=7A').first().isVisible(), 'orang tua melihat anak dan kelasnya');
+  ok(await o.locator('#pg .it:has-text("Latihan pecahan") >> text=Nilai 88').first().isVisible(), 'orang tua melihat nilai 88 dari guru');
+  const ost = (await o.locator('#pg .stats').innerText()).replace(/\n/g, ' ');
+  ok(/1\/1 tugas dikerjakan/.test(ost) && /88 rata-rata nilai/.test(ost), 'ringkasan anak: ' + ost);
+
+  console.log('Tahap 2: pesan orang tua dan guru');
+  await menu(o, 'Pesan guru');
+  ok(await o.locator('.chips >> text=Rina Wulandari, S.Pd. · Matematika · 7A').isVisible(), 'orang tua melihat guru anaknya');
+  await o.fill('#ct', 'Bu Rina, bagaimana perkembangan Andi di Matematika?'); await o.click('#pg >> button:text-is("Kirim")');
+  await o.waitForSelector('#pg .bub.me >> text=perkembangan Andi');
+  await menu(g, 'Pesan orang tua');
+  ok(await g.locator('.chips >> text=Orang tua Andi Saputra · 7A •').isVisible(), 'guru melihat pesan baru dari orang tua');
+  ok(await g.locator('#pg .bub >> text=perkembangan Andi').isVisible(), 'guru membaca pesan orang tua');
+  await g.fill('#ct', 'Andi rajin, nilai latihan terakhir 88.'); await g.click('#pg >> button:text-is("Kirim")');
+  await g.waitForSelector('#pg .bub.me >> text=nilai latihan terakhir 88');
+  await menu(o, 'Pesan guru');
+  ok(await o.locator('#pg .bub:not(.me) >> text=nilai latihan terakhir 88').isVisible(), 'orang tua menerima balasan guru');
+  await foto(o, 'ortu-pesan');
+  await menu(o, 'Pantau anak'); await foto(o, 'ortu-pantau');
 
   console.log('Tahap 3: pesan pribadi sekolah dan guru');
   await menu(sk, 'Pesan guru');

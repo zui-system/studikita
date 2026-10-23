@@ -11,7 +11,7 @@ const DAY = 864e5;
 const later = Timestamp.fromMillis(Date.now() + 30 * DAY);
 const past = Timestamp.fromMillis(Date.now() - 30 * DAY);
 // UID Firebase 28 karakter, id kelas baru 20 karakter (seperti doc() otomatis)
-const U = (s) => (s + '_'.repeat(28)).slice(0, 28);
+const U = (s) => (s + '0'.repeat(28)).slice(0, 28);
 const T = U('guru'), L = U('guruLama'), E = U('guruHabis'), P = U('ortu'), S1 = U('siswa1'), S2 = U('siswa2'), X = U('orangLain');
 const K1 = 'KELAS1aaaaaaaaaaaaaa', K2 = 'KELAS2bbbbbbbbbbbbbb';
 const db = (uid) => env.authenticatedContext(uid, { email: uid + '@x.id', email_verified: true }).firestore();
@@ -503,4 +503,78 @@ test('pantau boleh menyimpan daftar sekolah anak untuk pengumuman orang tua', as
   const base = { nick: 'Andi', jadwal: [], kegiatan: [], rencana: [], sesi: {}, mnt: {} };
   await assertSucceeds(setDoc(doc(db(M1), 'pantau', M1), { ...base, sek: [SK] }));
   await assertFails(setDoc(doc(db(M1), 'pantau', M1), { ...base, sek: 'x' }));
+});
+
+// ---- Tahap 2: pantauan orang tua dan pesan orang tua dengan guru ----
+
+const OR = U('ortuAndi');
+async function siapOrtu() {
+  await siapSekolah();
+  await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'companies', OR), { name: 'Ortu', owner: OR, created_at: Timestamp.now() }));
+  await prof(OR, 'ortu', { anak: '1' });
+  await newClass(OR, OR, 'FAMANDI1', 'keluarga');
+  await join(M1, OR, 'FAMANDI1');
+}
+const wali = (anak, pid, gid = KLS) => setDoc(doc(db(anak), 'groups', gid, 'wali', pid), { anak, nick: 'Andi', at: serverTimestamp() });
+const tid = (o, g) => o + '_' + g;
+const chatHead = (uid, o, g, dari) => setDoc(doc(db(uid), 'groups', KLS, 'chat', tid(o, g)), { ortu: o, guru: g, anak: 'Andi', last: 'Halo', dari, at: serverTimestamp() });
+const chatMsg = (uid, o, g, dari) => setDoc(doc(db(uid), 'groups', KLS, 'chat', tid(o, g), 'msgs', 'm' + Math.random().toString(36).slice(2)), { dari, t: 'Halo', uid, at: serverTimestamp() });
+
+test('anak mencatat orang tuanya di kelas; orang lain tidak bisa', async () => {
+  await siapOrtu();
+  await assertSucceeds(wali(M1, OR));
+  await assertFails(wali(M2, OR));
+  await assertFails(setDoc(doc(db(OR), 'groups', KLS, 'wali', OR), { anak: M1, nick: 'x', at: serverTimestamp() }));
+  await assertFails(wali(M1, X));
+  await assertSucceeds(getDocs(collection(db(G1), 'groups', KLS, 'wali')));
+  await assertFails(getDocs(collection(db(M2), 'groups', KLS, 'wali')));
+});
+
+test('orang tua melihat kelas, tugas, tanda selesai, dan nilai anaknya saja', async () => {
+  await siapOrtu();
+  await tugasGuru(G1, 'mtk1', 'Matematika');
+  await mark(M1, KLS, 'mtk1'); await mark(M2, KLS, 'mtk1');
+  await nilai(G1, 'mtk1', M1, 90); await nilai(G1, 'mtk1', M2, 70);
+  await assertFails(getDocs(collection(db(OR), 'groups', KLS, 'items')));
+  await wali(M1, OR);
+  await assertSucceeds(getDoc(doc(db(OR), 'groups', KLS)));
+  await assertSucceeds(getDocs(collection(db(OR), 'groups', KLS, 'items')));
+  await assertSucceeds(getDocs(collection(db(OR), 'groups', KLS, 'pengajar')));
+  const a = await assertSucceeds(getDocs(query(collectionGroup(db(OR), 'anggota'), where('uid', '==', M1))));
+  if (a.size !== 2) throw new Error('anggota anak: ' + a.size);
+  await assertSucceeds(getDocs(query(collectionGroup(db(OR), 'selesai'), where('uid', '==', M1))));
+  const n = await assertSucceeds(getDocs(query(collectionGroup(db(OR), 'nilai'), where('uid', '==', M1))));
+  if (n.size !== 1 || n.docs[0].data().nilai !== 90) throw new Error('nilai anak');
+  await assertFails(getDocs(query(collectionGroup(db(OR), 'nilai'), where('uid', '==', M2))));
+  await assertFails(getDoc(doc(db(OR), 'groups', KLS, 'items', 'mtk1', 'nilai', M2)));
+  await assertFails(getDocs(collection(db(OR), 'groups', KLS, 'anggota')));
+  await assertFails(getDocs(query(collectionGroup(db(X), 'nilai'), where('uid', '==', M1))));
+});
+
+test('pesan orang tua dan guru: hanya keduanya, guru harus mengajar di kelas itu', async () => {
+  await siapOrtu();
+  await assertFails(chatHead(OR, OR, G1, 'ortu'));
+  await wali(M1, OR);
+  await assertSucceeds(chatMsg(OR, OR, G1, 'ortu'));
+  await assertSucceeds(chatHead(OR, OR, G1, 'ortu'));
+  await assertSucceeds(chatMsg(G1, OR, G1, 'guru'));
+  await assertSucceeds(chatHead(G1, OR, G1, 'guru'));
+  await assertFails(chatMsg(G1, OR, G1, 'ortu'));
+  await assertFails(chatMsg(G2, OR, G1, 'guru'));
+  await assertFails(chatHead(OR, OR, X, 'ortu'));
+  await assertSucceeds(getDocs(collection(db(G1), 'groups', KLS, 'chat', tid(OR, G1), 'msgs')));
+  await assertSucceeds(getDocs(query(collection(db(G1), 'groups', KLS, 'chat'), where('guru', '==', G1))));
+  await assertSucceeds(getDocs(query(collection(db(OR), 'groups', KLS, 'chat'), where('ortu', '==', OR))));
+  await assertFails(getDocs(collection(db(G2), 'groups', KLS, 'chat', tid(OR, G1), 'msgs')));
+  await assertFails(getDocs(collection(db(SK), 'groups', KLS, 'chat', tid(OR, G1), 'msgs')));
+  await assertFails(getDocs(collection(db(M1), 'groups', KLS, 'chat', tid(OR, G1), 'msgs')));
+  await assertFails(getDocs(collection(db(SK), 'groups', KLS, 'chat')));
+  await deleteDoc(doc(db(SK), 'groups', KLS, 'pengajar', G1));
+  await assertFails(getDocs(collection(db(G1), 'groups', KLS, 'chat', tid(OR, G1), 'msgs')));
+  // kelas ditutup untuk dihapus: sekolah boleh membuka dan membersihkan percakapan
+  await updateDoc(doc(db(SK), 'groups', KLS), { closed: true });
+  const c = await assertSucceeds(getDocs(collection(db(SK), 'groups', KLS, 'chat')));
+  for (const d of (await assertSucceeds(getDocs(collection(db(SK), 'groups', KLS, 'chat', tid(OR, G1), 'msgs')))).docs) await assertSucceeds(deleteDoc(d.ref));
+  for (const d of c.docs) await assertSucceeds(deleteDoc(d.ref));
+  await assertSucceeds(deleteDoc(doc(db(SK), 'groups', KLS, 'wali', OR)));
 });

@@ -24,6 +24,8 @@ rules_version = '2';
 //   schools/{uidSekolah}               sekolah; kelas sekolah = groups dengan field school
 //   schools/{sid}/guru/{uid}           guru yang bergabung dengan kode guru
 //   kodeguru/{kode}                    kode guru -> id sekolah, hanya bisa dibuka satu per satu
+//   groups/{gid}/wali/{uidOrtu}        orang tua murid di kelas ini (ditulis anak), untuk pantauan orang tua
+//   groups/{gid}/chat/{uidOrtu_uidGuru} pesan antara orang tua dan guru yang mengajar anaknya
 //   schools/{sid}/info/{id}            pengumuman sekolah untuk semua
 //   schools/{sid}/program/{id}         program sekolah dan statusnya (sekolah dan gurunya)
 //   schools/{sid}/pesan/{uidGuru}/msgs pesan pribadi antara sekolah dan satu guru
@@ -357,6 +359,16 @@ service cloud.firestore {
     function isPengajar(gid) {
       return signedIn() && exists(/databases/$(database)/documents/groups/$(gid)/pengajar/$(request.auth.uid));
     }
+    // Orang tua (pemilik grup keluarga) dari murid uid.
+    function isParentOf(uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/groups/$(request.auth.uid)/anggota/$(uid))
+        && grp(request.auth.uid).kind == 'keluarga';
+    }
+    // Orang tua dari salah satu murid di kelas ini (tercatat lewat wali).
+    function isWali(gid) {
+      return signedIn() && exists(/databases/$(database)/documents/groups/$(gid)/wali/$(request.auth.uid));
+    }
 
     // Kode hanya bisa dibuka satu per satu (tidak bisa didaftar), jadi kode tidak bisa ditebak massal.
     // Dibuat dalam satu batch bersama dokumen grupnya. Kode yang sudah dipakai tidak bisa ditimpa.
@@ -376,7 +388,7 @@ service cloud.firestore {
     match /groups/{gid} {
       function owner() { return signedIn() && resource.data.ownerId == request.auth.uid; }
 
-      allow get: if isMe(gid) || owner() || isPengajar(gid) || (signedIn() && isMember(gid, request.auth.uid));
+      allow get: if isMe(gid) || owner() || isPengajar(gid) || isWali(gid) || (signedIn() && isMember(gid, request.auth.uid));
       // Pemilik boleh mendaftar grupnya sendiri: where('ownerId', '==', uid).
       allow list: if owner();
 
@@ -460,7 +472,7 @@ service cloud.firestore {
       // Sekolah menugaskan guru (yang sudah bergabung ke sekolahnya) beserta mapelnya.
       // Siswa di kelas boleh melihat daftar guru dan mapel.
       match /pengajar/{uid} {
-        allow read: if isMe(uid) || ownsGrp(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow read: if isMe(uid) || ownsGrp(gid) || isWali(gid) || (signedIn() && isMember(gid, request.auth.uid));
         allow create, update: if ownsGrp(gid)
           && grp(gid).get('school', '') == request.auth.uid
           && isGuruOf(request.auth.uid, uid)
@@ -475,8 +487,59 @@ service cloud.firestore {
         allow delete: if isMe(uid) || ownsGrp(gid) || (isMe(gid) && !grpExists(gid));
       }
 
+      // Anak mencatat orang tuanya (pemilik grup keluarga yang ia ikuti) di kelas yang ia ikuti,
+      // supaya orang tua bisa melihat kelas, tugas, dan guru anaknya.
+      match /wali/{pid} {
+        allow read: if isMe(pid) || ownsGrp(gid) || isPengajar(gid);
+        allow create, update: if signedIn()
+          && onlyKeys(['anak', 'nick', 'at'])
+          && request.resource.data.anak == request.auth.uid
+          && request.resource.data.nick is string
+          && request.resource.data.nick.size() <= 60
+          && request.resource.data.at == request.time
+          && grp(gid).kind == 'sekolah'
+          && isMember(gid, request.auth.uid)
+          && isMember(pid, request.auth.uid)
+          && grp(pid).kind == 'keluarga';
+        allow delete: if isMe(pid) || ownsGrp(gid) || (signedIn() && resource.data.anak == request.auth.uid);
+      }
+
+      // Pesan orang tua dan guru. id = uidOrtu + '_' + uidGuru. Hanya orang tua (wali di kelas ini)
+      // dan guru (pengajar di kelas ini) yang bersangkutan; sekolah dan orang lain tidak bisa membaca.
+      match /chat/{tid} {
+        function pihak(o, g) { return (isMe(o) && isWali(gid)) || (isMe(g) && isPengajar(gid)); }
+        function okDari(o, g, d) { return (isMe(o) && d == 'ortu') || (isMe(g) && d == 'guru'); }
+        // Sekolah hanya bisa membuka percakapan saat kelas ditutup untuk dihapus (pembersihan).
+        allow read: if (signedIn() && pihak(resource.data.ortu, resource.data.guru)) || (ownsGrp(gid) && !grpOpen(gid));
+        allow create, update: if signedIn()
+          && onlyKeys(['ortu', 'guru', 'anak', 'last', 'dari', 'at'])
+          && tid == request.resource.data.ortu + '_' + request.resource.data.guru
+          && pihak(request.resource.data.ortu, request.resource.data.guru)
+          && okDari(request.resource.data.ortu, request.resource.data.guru, request.resource.data.dari)
+          && exists(/databases/$(database)/documents/groups/$(gid)/wali/$(request.resource.data.ortu))
+          && exists(/databases/$(database)/documents/groups/$(gid)/pengajar/$(request.resource.data.guru))
+          && request.resource.data.anak is string && request.resource.data.anak.size() <= 60
+          && request.resource.data.last is string && request.resource.data.last.size() <= 120
+          && request.resource.data.at == request.time;
+        allow delete: if ownsGrp(gid);
+
+        match /msgs/{id} {
+          allow read: if pihak(tid.split('_')[0], tid.split('_')[1]) || (ownsGrp(gid) && !grpOpen(gid));
+          allow create: if pihak(tid.split('_')[0], tid.split('_')[1])
+            && onlyKeys(['dari', 't', 'uid', 'at'])
+            && request.resource.data.uid == request.auth.uid
+            && okDari(tid.split('_')[0], tid.split('_')[1], request.resource.data.dari)
+            && request.resource.data.t is string
+            && request.resource.data.t.size() > 0
+            && request.resource.data.t.size() <= 2000
+            && request.resource.data.at == request.time;
+          allow update: if false;
+          allow delete: if ownsGrp(gid);
+        }
+      }
+
       match /items/{itemId} {
-        allow read: if isMe(gid) || ownsGrp(gid) || isPengajar(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow read: if isMe(gid) || ownsGrp(gid) || isPengajar(gid) || isWali(gid) || (signedIn() && isMember(gid, request.auth.uid));
         allow create: if ownsGrp(gid)
           && grp(gid).kind == 'sekolah'
           && grpOpen(gid)
@@ -507,7 +570,7 @@ service cloud.firestore {
         // Siswa hanya melihat nilainya sendiri.
         match /nilai/{uid} {
           function canGrade() { return ownsGrp(gid) || (signedIn() && itemBy() == request.auth.uid); }
-          allow read: if isMe(uid) || isMe(gid) || canGrade();
+          allow read: if isMe(uid) || isMe(gid) || canGrade() || isParentOf(uid);
           allow create, update: if canGrade()
             && isMember(gid, uid)
             && onlyKeys(['uid', 'nilai', 'by', 'at'])
@@ -523,7 +586,7 @@ service cloud.firestore {
         // Siswa menandai tugas kelas selesai. Guru pemilik kelas melihat siapa saja
         // (nama panggilan) yang sudah selesai. Siswa lain tidak bisa melihatnya.
         match /selesai/{uid} {
-          allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid) || isPengajar(gid);
+          allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid) || isPengajar(gid) || isParentOf(uid);
           allow create: if isMe(uid)
             && isMember(gid, uid)
             && onlyKeys(['uid', 'nick', 'at'])
@@ -538,18 +601,19 @@ service cloud.firestore {
       }
     }
 
+    // Orang tua juga bisa mencari kelas, tanda selesai, dan nilai anaknya (where('uid', '==', uidAnak)).
     // Supaya pengguna bisa mencari grup yang ia ikuti:
     // collectionGroup('anggota').where('uid', '==', uidSendiri)
     match /{path=**}/anggota/{uid} {
-      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
     }
     // Tugas kelas yang sudah ditandai selesai: collectionGroup('selesai').where('uid', '==', uidSendiri)
     match /{path=**}/selesai/{uid} {
-      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
     }
     // Nilai milik sendiri: collectionGroup('nilai').where('uid', '==', uidSendiri)
     match /{path=**}/nilai/{uid} {
-      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
     }
     // Kelas yang diajar: collectionGroup('pengajar').where('uid', '==', uidSendiri)
     match /{path=**}/pengajar/{uid} {
