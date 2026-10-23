@@ -197,6 +197,74 @@ try {
   await foto(sk, 'sekolah-dasbor');
   ok(!(await sk.locator('#pg >> text=Andi Saputra').count()), 'dasbor tidak menampilkan nama siswa');
 
+  console.log('Tahap 3: pengumuman untuk semua');
+  await menu(sk, 'Pengumuman');
+  await sk.fill('#ij', 'PTS 3 sampai 7 November'); await sk.fill('#ii', 'Siswa hadir pukul 06.45 dan membawa kartu ujian.');
+  await sk.click('button:text-is("Umumkan")'); await sk.waitForSelector('#pg >> text=PTS 3 sampai 7 November');
+  ok(true, 'sekolah membuat pengumuman');
+  await menu(m, 'Pengumuman');
+  ok(await m.locator('#pg >> text=PTS 3 sampai 7 November').isVisible() && await m.locator('#pg >> text=SMPN 5 Bandung').first().isVisible(), 'murid melihat pengumuman sekolahnya');
+  await menu(g, 'Beranda');
+  ok(await g.locator('#pg >> text=PTS 3 sampai 7 November').isVisible(), 'guru melihat pengumuman terbaru di Beranda');
+  const o = await halaman({ hp: true });
+  await daftar(o, 'Orang tua', { nama: 'Sari Rahayu', hp: '081255556666', anak: '1', alamat: 'Bandung' }, 'sari@ortu.id');
+  ok(await o.locator('#pg >> text=Belum ada anak yang bergabung').isVisible(), 'orang tua langsung masuk ke Pantau anak');
+  await menu(o, 'Keluarga');
+  await o.fill('#gn', 'Keluarga Andi'); await o.click('#gr >> button:text-is("Buat")'); await o.waitForSelector('#gr >> text=Kode untuk dibagikan');
+  const kodeKel = (await o.locator('#gr .s b').first().innerText()).trim();
+  await menu(m, 'Kelasku'); await m.fill('#gc', kodeKel); await m.click('#gr >> button:has-text("Gabung")'); await m.waitForSelector('#gr >> text=Keluarga Andi');
+  await m.waitForTimeout(1500);
+  await menu(o, 'Pengumuman');
+  ok(await o.locator('#pg >> text=PTS 3 sampai 7 November').isVisible(), 'orang tua melihat pengumuman sekolah anaknya');
+  ok((await o.locator('#nav button').allInnerTexts()).map((x) => x.replace(/^\W+/u, '')).join(', ') === 'Pantau anak, Pesan guru, Pengumuman, Keluarga, Pengaturan', 'menu orang tua lengkap');
+
+  console.log('Tahap 2: orang tua memantau tugas dan nilai anak');
+  await menu(o, 'Pantau anak');
+  ok(await o.locator('#pg >> text=Andi Saputra').first().isVisible() && await o.locator('#pg >> text=7A').first().isVisible(), 'orang tua melihat anak dan kelasnya');
+  ok(await o.locator('#pg .it:has-text("Latihan pecahan") >> text=Nilai 88').first().isVisible(), 'orang tua melihat nilai 88 dari guru');
+  const ost = (await o.locator('#pg .stats').innerText()).replace(/\n/g, ' ');
+  ok(/1\/1 tugas dikerjakan/.test(ost) && /88 rata-rata nilai/.test(ost), 'ringkasan anak: ' + ost);
+
+  console.log('Tahap 2: pesan orang tua dan guru');
+  await menu(o, 'Pesan guru');
+  ok(await o.locator('.chips >> text=Rina Wulandari, S.Pd. · Matematika · 7A').isVisible(), 'orang tua melihat guru anaknya');
+  await o.fill('#ct', 'Bu Rina, bagaimana perkembangan Andi di Matematika?'); await o.click('#pg >> button:text-is("Kirim")');
+  await o.waitForSelector('#pg .bub.me >> text=perkembangan Andi');
+  await menu(g, 'Pesan orang tua');
+  ok(await g.locator('.chips >> text=Orang tua Andi Saputra · 7A •').isVisible(), 'guru melihat pesan baru dari orang tua');
+  ok(await g.locator('#pg .bub >> text=perkembangan Andi').isVisible(), 'guru membaca pesan orang tua');
+  await g.fill('#ct', 'Andi rajin, nilai latihan terakhir 88.'); await g.click('#pg >> button:text-is("Kirim")');
+  await g.waitForSelector('#pg .bub.me >> text=nilai latihan terakhir 88');
+  await menu(o, 'Pesan guru');
+  ok(await o.locator('#pg .bub:not(.me) >> text=nilai latihan terakhir 88').isVisible(), 'orang tua menerima balasan guru');
+  await foto(o, 'ortu-pesan');
+  await menu(o, 'Pantau anak'); await foto(o, 'ortu-pantau');
+
+  console.log('Tahap 3: pesan pribadi sekolah dan guru');
+  await menu(sk, 'Pesan guru');
+  await sk.fill('#mt', 'Bu Rina, mohon rekap nilai Matematika dikumpulkan Jumat.'); await sk.click('#pg >> button:text-is("Kirim")');
+  await sk.waitForSelector('#pg .bub.me >> text=mohon rekap nilai');
+  await menu(g, 'Pesan sekolah');
+  ok(await g.locator('#pg .bub >> text=mohon rekap nilai').isVisible(), 'guru menerima pesan pribadi dari sekolah');
+  await g.fill('#mt', 'Baik, Jumat siang saya kirim.'); await g.click('#pg >> button:text-is("Kirim")');
+  await g.waitForSelector('#pg .bub.me >> text=Jumat siang saya kirim');
+  await menu(sk, 'Pesan guru');
+  ok(await sk.locator('#pg .bub:not(.me) >> text=Jumat siang saya kirim').isVisible(), 'sekolah menerima balasan guru');
+  ok(await sk.locator('.chips >> text=•').isVisible(), 'tanda pesan dari guru di daftar guru');
+
+  console.log('Tahap 3: program sekolah');
+  await menu(sk, 'Program');
+  await sk.fill('#pn', 'Literasi 15 menit setiap pagi'); await sk.selectOption('#pp', 'Rina Wulandari, S.Pd.'); await sk.selectOption('#ps', 'Berjalan');
+  await sk.click('button:text-is("Tambah")'); await sk.waitForSelector('#pg >> text=Literasi 15 menit setiap pagi');
+  const pid = await admin(async (d) => (await getDocs(collection(d, 'schools', SK, 'program'))).docs[0].id);
+  await sk.fill('#g_' + pid, '60'); await sk.fill('#c_' + pid, '18 dari 18 kelas sudah mulai.'); await sk.click('button:text-is("Simpan perubahan")');
+  await sk.waitForFunction(() => !document.querySelector('#pg.empty') && document.querySelector('#pg .card'));
+  const pr = await admin(async (d) => (await getDocs(collection(d, 'schools', SK, 'program'))).docs[0].data());
+  ok(pr.progres === 60 && pr.status === 'Berjalan' && pr.pj === 'Rina Wulandari, S.Pd.', 'program tersimpan dengan progres 60%');
+  await menu(sk, 'Dasbor');
+  ok(await sk.locator('#pg >> text=Literasi 15 menit setiap pagi').isVisible() && await sk.locator('#pg >> text=18 dari 18 kelas sudah mulai.').isVisible(), 'program tampil di dasbor');
+  await foto(sk, 'sekolah-dasbor-program');
+
   console.log('Pengguna lama tanpa profil wajib melengkapi data');
   const LAMA = await akunLama('lama@siswa.id');
   await admin((d) => setDoc(doc(d, 'companies', LAMA), { name: 'Lama', owner: LAMA, created_at: Timestamp.now() }));
@@ -250,8 +318,8 @@ try {
   await sk.locator('#pg .card:has-text("7B") >> button:text-is("Hapus")').click(); await sk.waitForTimeout(2500);
   ok(!(await admin(async (d) => (await getDoc(doc(d, 'groups', k7b.id))).exists())), 'kelas 7B beserta isinya terhapus');
   await sk.evaluate(() => openF('set')); await sk.click('text=Hapus akun'); await sk.waitForTimeout(4000);
-  const sisa = await admin(async (d) => ({ s: (await getDoc(doc(d, 'schools', SK))).exists(), k: (await getDoc(doc(d, 'groups', k7a.id))).exists(), p: (await getDoc(doc(d, 'profil', SK))).exists(), kg: (await getDoc(doc(d, 'kodeguru', kodeGuru))).exists() }));
-  ok(!sisa.s && !sisa.k && !sisa.p && !sisa.kg, 'hapus akun sekolah membersihkan sekolah, kelas, kode guru, dan profil');
+  const sisa = await admin(async (d) => ({ s: (await getDoc(doc(d, 'schools', SK))).exists(), k: (await getDoc(doc(d, 'groups', k7a.id))).exists(), p: (await getDoc(doc(d, 'profil', SK))).exists(), kg: (await getDoc(doc(d, 'kodeguru', kodeGuru))).exists(), i: (await getDocs(collection(d, 'schools', SK, 'info'))).size + (await getDocs(collection(d, 'schools', SK, 'program'))).size + (await getDocs(collection(d, 'schools', SK, 'pesan'))).size }));
+  ok(!sisa.s && !sisa.k && !sisa.p && !sisa.kg && !sisa.i, 'hapus akun sekolah membersihkan sekolah, kelas, kode guru, pengumuman, program, pesan, dan profil');
 
   console.log(`\nLulus ${pass} pemeriksaan.`);
 } finally {
