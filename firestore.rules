@@ -52,14 +52,19 @@ service cloud.firestore {
     }
 
     // Paket berbayar yang masih aktif (termasuk tenggang 3 hari, sama dengan Zui Admin),
-    // atau gratis selamanya. Grup keluarga butuh paket pro, kelas sekolah butuh paket business.
-    // Masa percobaan tidak membuka fitur grup.
+    // gratis selamanya, atau masa percobaan. Grup keluarga butuh paket pro, kelas sekolah butuh
+    // paket business. Masa percobaan (14 hari sejak akun dibuat, paling awal 23 Okt 2026, dan
+    // belum pernah berbayar) membuka semua fitur, termasuk grup keluarga dan kelas sekolah.
+    // Samakan dengan TRIAL dan LAUNCH di app.html.
     function planActive(uid, kind) {
       let p = /databases/$(database)/documents/companies/$(uid);
       return exists(p) && (get(p).data.get('free', false) == true
         || (get(p).data.get('until', null) != null
             && get(p).data.get('plan', '') == (kind == 'keluarga' ? 'pro' : 'business')
-            && request.time < get(p).data.until + duration.value(3, 'd')));
+            && request.time < get(p).data.until + duration.value(3, 'd'))
+        || (get(p).data.get('until', null) == null
+            && (request.time < get(p).data.created_at + duration.value(14, 'd')
+                || request.time < timestamp.date(2026, 10, 23) + duration.value(14, 'd'))));
     }
 
     // ---- Paket (pola standar Zui Admin) ----
@@ -104,7 +109,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/companies/$(request.auth.uid))
         && request.resource.data.status == 'wait'
         && request.resource.data.at == request.time
-        && request.resource.data.plan in ['starter', 'pro']
+        && request.resource.data.plan in ['starter', 'pro', 'business']
         && request.resource.data.months in [1, 6, 12]
         && request.resource.data.amount is number
         && request.resource.data.cur in ['IDR', 'MYR']
