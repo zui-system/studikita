@@ -6,14 +6,16 @@
 | `app.html` | Aplikasinya. Aplikasi Android juga membuka halaman ini |
 | `legal.html` | Syarat Layanan (`#syarat`), Kebijakan Privasi (`#privasi`), Pengembalian Dana (`#refund`), Kontak & Alamat (`#kontak`) |
 | `privacy.html` | Mengarah ke `legal.html#privasi` (alamat lama untuk Play Store) |
+| `sw.js` | Service worker kecil untuk notifikasi pengingat (tidak menyimpan cache) |
 | `firestore.rules`, `firestore.indexes.json` | Aturan dan indeks Cloud Firestore |
-| `firebase.json`, `.firebaserc` | Untuk `firebase deploy --only firestore` ke project `sudiku-zui` |
+| `firebase.json`, `.firebaserc` | Untuk `firebase deploy --only firestore` ke project `sudiku-zui`, plus port emulator untuk uji |
+| `tests/` | Uji aturan Firestore dan uji alur di browser dengan Firebase Emulator (lihat bagian 7) |
 
 ## 1. Firebase
 Project: **sudiku-zui** (organisasi info-zuisystem-org), terpisah dari aplikasi Zui lain. Config web sudah terpasang di `FBC` pada `app.html` (boleh publik, keamanan dijaga oleh `firestore.rules`).
 1. **Authentication > Sign-in method:** aktifkan **Email/Password** dan **Google**.
 2. **Authentication > Settings > Authorized domains:** tambahkan `studikita.zuisystem.com` dan `admin.zuisystem.com`.
-3. **Firestore Database:** buat database (mode production), lalu terbitkan aturan dan indeks dengan `npm i -g firebase-tools`, `firebase login`, dan `firebase deploy --only firestore` dari folder ini. Cara manual: tempel isi `firestore.rules` di **Firestore Database > Rules** lalu **Publish**, dan buat indeks **collection group** `anggota`, field `uid`, Ascending (atau klik tautan di pesan error pertama di console browser).
+3. **Firestore Database:** buat database (mode production), lalu terbitkan aturan dan indeks dengan `npm i -g firebase-tools`, `firebase login`, dan `firebase deploy --only firestore` dari folder ini. Cara manual: tempel isi `firestore.rules` di **Firestore Database > Rules** lalu **Publish**, dan buat indeks **collection group** `anggota`, field `uid`, Ascending, serta indeks **collection group** `selesai`, field `uid`, Ascending (atau klik tautan di pesan error pertama di console browser).
 4. Pendaftaran email wajib verifikasi: aplikasi mengirim email verifikasi dan baru mengizinkan masuk setelah tautannya diklik. Akun Google langsung bisa masuk.
 5. (Opsional) **Authentication > Templates:** ganti nama pengirim dan bahasa email verifikasi serta reset kata sandi menjadi Bahasa Indonesia.
 
@@ -73,12 +75,15 @@ Lalu di Firebase Console project sudiku-zui: pastikan `admin.zuisystem.com` ada 
 | `users/{uid}` | `{data: S, updatedAt}`, seluruh data aplikasi | pemilik |
 | `pantau/{uid}` | `{nick, jadwal, kegiatan, rencana, sesi, mnt}`, tanpa catatan | pemilik dan orang tua di grup keluarga |
 | `codes/{KODE}` | `{gid}` | dibuka satu per satu, tidak bisa didaftar |
-| `groups/{uidPemilik}` | `{name, kind, ownerId, code, count, createdAt}` | pemilik dan anggota |
-| `groups/{gid}/anggota/{uid}` | `{uid, code, joinedAt}` | anggota itu sendiri dan pemilik grup |
+| `groups/{gid}` | `{name, kind, ownerId, code, count, createdAt, closed?}` | pemilik (`ownerId`) dan anggota. Grup keluarga dan kelas lama: `gid` = uid pemilik. Kelas baru: id acak 20 karakter |
+| `groups/{gid}/anggota/{uid}` | `{uid, code, joinedAt, nick}` (`nick` tidak ada di anggota lama) | anggota itu sendiri dan pemilik grup; `nick` bisa diubah anggota |
 | `groups/{gid}/items/{id}` | tugas dan jadwal kelas | tulis: guru pemilik; baca: anggota |
+| `groups/{gid}/items/{id}/selesai/{uid}` | `{uid, nick, at}`, tanda tugas kelas selesai | buat/hapus: siswa itu sendiri (harus anggota, hanya untuk tugas); baca: siswa itu dan guru pemilik |
 
 - **Grup keluarga:** orang tua dengan paket Keluarga membuat grup di tab Grup dan membagikan kode (maksimal 3 anak). Orang tua hanya melihat jadwal, kegiatan, rencana, dan statistik fokus anak, bukan catatan pelajarannya.
-- **Kelas sekolah:** guru dengan paket Sekolah membuat kelas, membagikan kode, lalu menambah tugas atau jadwal. Guru tidak bisa melihat data pribadi siswa.
+- **Kelas sekolah:** guru dengan paket Sekolah bisa membuat **beberapa kelas** (tab Grup > Buat kelas lain), membagikan kode tiap kelas, lalu menambah tugas atau jadwal. Kelas lama yang id-nya = uid guru tetap jalan dan tampil bersama kelas baru (aplikasi mencari `groups` dengan `ownerId` = uid sendiri). Guru bisa **Hapus kelas**: grup ditandai `closed`, isinya dibersihkan, lalu grup dan kodenya dihapus.
+- **Tugas selesai:** siswa mengisi nama saat bergabung (bisa diubah lewat "ubah" di tab Grup), lalu mencentang tugas kelas di Beranda. Guru melihat "✓ x/y selesai" di tiap tugas; ketuk untuk melihat nama yang sudah dan belum. Guru tidak bisa melihat jadwal, kegiatan, catatan, atau email siswa. Tanda selesai ikut dihapus saat siswa keluar kelas atau menghapus akun.
+- **Pengingat tugas dan ujian (lokal):** Pengaturan > Pengingat tugas dan ujian. Setelah izin notifikasi diberikan, aplikasi memunculkan notifikasi untuk Kegiatan berkategori Tugas atau Ujian dan tugas kelas yang belum dicentang, yang jatuh tempo hari ini atau besok. Notifikasi muncul saat aplikasi dibuka dan tiap 30 menit selama terbuka; satu tugas hanya diingatkan sekali per hari. Tanpa server dan tanpa biaya, tetapi **tidak bisa muncul bila aplikasi tidak dibuka sama sekali**. Di aplikasi Android (TWA dari PWABuilder) aktifkan *notification delegation* saat membuat paket agar notifikasi tampil sebagai notifikasi aplikasi. `sw.js` wajib ikut diunggah.
 - **Hapus akun** (Pengaturan > Hapus akun) menghapus data belajar, grup, dan akun. Permintaan bayar dan chat tetap tersimpan untuk pembukuan. Firebase meminta masuk ulang bila sesi sudah lama.
 - Satu dokumen Firestore maksimal 1 MB. Bila catatan pengguna sangat banyak, pindahkan catatan ke subkoleksi `users/{uid}/catatan` dan tambahkan aturannya.
 
@@ -97,3 +102,17 @@ Lalu di Firebase Console project sudiku-zui: pastikan `admin.zuisystem.com` ada 
 ## 6. Dokumen legal
 - Bila harga, fitur, atau cara bayar berubah, samakan `legal.html` (Syarat bagian 5, tabel di Pengembalian Dana bagian 2) dan `index.html`, lalu perbarui tanggal berlakunya.
 - Aturan persetujuan orang tua untuk pengguna di bawah umur ada di Syarat bagian 3 dan Privasi bagian 7.
+
+## 7. Uji dengan Firebase Emulator
+Butuh Node 18+ dan Java 11+. Dari folder `tests`:
+```bash
+npm i
+npm run test:rules   # aturan Firestore (@firebase/rules-unit-testing), termasuk skenario grup lama
+npm run test:e2e     # alur di Chromium (Playwright) dengan emulator Auth + Firestore
+```
+Uji browser memakai Chromium di `/opt/pw-browsers/chromium` (ganti dengan variabel `CHROMIUM`). SDK compat 10.12.2 dilayani dari `node_modules` (paket `firebase-compat`), dan `app.html` disambungkan ke emulator saat uji saja; file aslinya tidak diubah. Project emulator `demo-studiku`, tidak menyentuh `sudiku-zui`.
+
+## 8. Usulan berikutnya (belum dibuat)
+- **Pengingat push (FCM):** notifikasi tetap datang walau aplikasi tertutup. Butuh pengirim terjadwal: Cloud Functions + Cloud Scheduler (project naik ke paket Blaze; untuk uji coba satu sekolah praktis Rp0 karena masuk kuota gratis) atau GitHub Actions terjadwal (gratis, kunci service account di GitHub Secrets). Perlu menyimpan token perangkat di Firestore (perbarui Kebijakan Privasi). Di iPhone hanya jalan bila aplikasi dipasang ke layar utama (iOS 16.4+).
+- **Anak tanpa email:** orang tua atau guru membuat akun siswa berupa nama pengguna + PIN. Secara teknis akun email/sandi Firebase dengan email buatan (mis. `nama.kode@siswa.studikita.zuisystem.com`) yang dibuat dan ditandai terverifikasi oleh Cloud Function (Admin SDK), jadi butuh Blaze. Alternatif tanpa server: Anonymous Auth + kode pemulihan, tetapi data hilang bila kode hilang.
+- **Sekolah dengan banyak guru:** dokumen baru `schools/{uidAdminSekolah}` dengan kode undangan guru dan subkoleksi `guru/{uid}`. Kelas guru menyimpan field `school`, dan aturan memeriksa paket `business` milik admin sekolah (`companies/{uidAdminSekolah}`), sehingga Zui Admin cukup mengaktifkan satu akun sekolah. Bentuk `companies`, `subreqs`, `zconfig`, dan `support` tidak berubah.
