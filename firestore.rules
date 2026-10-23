@@ -24,13 +24,15 @@ rules_version = '2';
 //   schools/{uidSekolah}               sekolah; kelas sekolah = groups dengan field school
 //   schools/{sid}/guru/{uid}           guru yang bergabung dengan kode guru
 //   kodeguru/{kode}                    kode guru -> id sekolah, hanya bisa dibuka satu per satu
+//   groups/{gid}/absen/{sesi}/hadir/{uid}  absensi per pertemuan (H, I, S, A)
 //   groups/{gid}/wali/{uidOrtu}        orang tua murid di kelas ini (ditulis anak), untuk pantauan orang tua
 //   groups/{gid}/chat/{uidOrtu_uidGuru} pesan antara orang tua dan guru yang mengajar anaknya
 //   schools/{sid}/info/{id}            pengumuman sekolah untuk semua
 //   schools/{sid}/program/{id}         program sekolah dan statusnya (sekolah dan gurunya)
 //   schools/{sid}/pesan/{uidGuru}/msgs pesan pribadi antara sekolah dan satu guru
 //
-// Paket Studiku di Zui Admin: starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel.
+// Paket Studiku di Zui Admin: starter = Guru, pro = Orang tua, business = Sekolah (Manajemen atau
+// Terpadu; Terpadu dan kuota murid ditetapkan admin ZUI di schools/{sid}). Murid gratis.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -67,15 +69,33 @@ service cloud.firestore {
     // paket business. Masa percobaan (14 hari sejak akun dibuat, paling awal 23 Okt 2026, dan
     // belum pernah berbayar) membuka semua fitur, termasuk grup keluarga dan kelas sekolah.
     // Samakan dengan TRIAL dan LAUNCH di app.html.
+    // Paket per peran (Zui Admin): starter = Guru, pro = Orang tua, business = Sekolah.
+    // kind: 'guru' | 'keluarga' (orang tua) | 'sekolah'. Murid gratis, tidak butuh paket.
     function planActive(uid, kind) {
       let p = /databases/$(database)/documents/companies/$(uid);
       return exists(p) && (get(p).data.get('free', false) == true
         || (get(p).data.get('until', null) != null
-            && get(p).data.get('plan', '') == (kind == 'keluarga' ? 'pro' : 'business')
+            && get(p).data.get('plan', '') == (kind == 'keluarga' ? 'pro' : kind == 'guru' ? 'starter' : 'business')
             && request.time < get(p).data.until + duration.value(3, 'd'))
-        || (get(p).data.get('until', null) == null
-            && (request.time < get(p).data.created_at + duration.value(14, 'd')
-                || request.time < timestamp.date(2026, 10, 23) + duration.value(14, 'd'))));
+        || inTrial(uid));
+    }
+    function inTrial(uid) {
+      let p = /databases/$(database)/documents/companies/$(uid);
+      return exists(p) && get(p).data.get('until', null) == null
+        && (request.time < get(p).data.created_at + duration.value(14, 'd')
+            || request.time < timestamp.date(2026, 10, 23) + duration.value(14, 'd'));
+    }
+    // Guru aktif: paket Guru sendiri (paket Sekolah lama juga dihitung), atau ditanggung sekolah
+    // tempatnya mengajar (via = uid sekolah) yang paket Sekolahnya aktif.
+    function guruActive(uid, via) {
+      return planActive(uid, 'guru') || planActive(uid, 'sekolah')
+        || (via != '' && isGuruOf(via, uid) && planActive(via, 'sekolah'));
+    }
+    // Sekolah Terpadu: semua tersambung (kelas milik sekolah, guru dan orang tua ditanggung).
+    // Ditetapkan admin ZUI; selama masa percobaan dianggap Terpadu.
+    function terpadu(sid) {
+      return inTrial(sid)
+        || get(/databases/$(database)/documents/schools/$(sid)).data.get('terpadu', false) == true;
     }
 
     // Salinan status paket untuk kelas sekolah (field pk di groups), harus sama dengan companies/{uid}.
@@ -87,7 +107,8 @@ service cloud.firestore {
     // ---- Paket (pola standar Zui Admin) ----
 
     match /companies/{cid} {
-      allow read: if isMe(cid) || superAdmin() || (signedIn() && isMember(cid, request.auth.uid));
+      allow read: if isMe(cid) || superAdmin() || (signedIn() && isMember(cid, request.auth.uid))
+        || (signedIn() && isGuruOf(cid, request.auth.uid));
       // Pengguna tidak bisa mengisi paket, masa aktif, atau status gratis sendiri.
       allow create: if isMe(cid)
         && onlyKeys(['name', 'owner', 'created_at'])
@@ -250,8 +271,8 @@ service cloud.firestore {
           && d.jenjang is string && d.jenjang.size() <= 40
           && d.alamat is string && d.alamat.size() <= 200;
       }
-      allow get: if isMe(sid) || (signedIn() && isGuruOf(sid, request.auth.uid));
-      allow list: if false;
+      allow get: if isMe(sid) || superAdmin() || (signedIn() && isGuruOf(sid, request.auth.uid));
+      allow list: if superAdmin();
       allow create: if isMe(sid)
         && onlyKeys(['name', 'jenjang', 'alamat', 'ownerId', 'codeGuru', 'createdAt'])
         && okSchool()
@@ -261,7 +282,17 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/kodeguru/$(request.resource.data.codeGuru))
         && request.resource.data.createdAt == request.time
         && peran(sid) == 'sekolah';
-      allow update: if isMe(sid) && changedOnly(['name', 'jenjang', 'alamat']) && okSchool();
+      allow update: if (isMe(sid) && changedOnly(['name', 'jenjang', 'alamat']) && okSchool())
+        // sekolah mengajukan paket (Manajemen atau Terpadu dengan kuota murid); admin ZUI yang menetapkan
+        || (isMe(sid) && changedOnly(['minta'])
+            && request.resource.data.minta.keys().hasOnly(['terpadu', 'kuota', 'at'])
+            && request.resource.data.minta.terpadu is bool
+            && request.resource.data.minta.kuota is int
+            && request.resource.data.minta.kuota >= 0 && request.resource.data.minta.kuota <= 100000
+            && request.resource.data.minta.at == request.time)
+        || (superAdmin() && changedOnly(['terpadu', 'kuota'])
+            && request.resource.data.get('terpadu', false) is bool
+            && request.resource.data.get('kuota', 0) is int);
       allow delete: if isMe(sid);
 
       // Guru bergabung dengan kode guru dari sekolah. Sekolah bisa mengeluarkan guru.
@@ -375,6 +406,20 @@ service cloud.firestore {
     function isWali(gid) {
       return signedIn() && exists(/databases/$(database)/documents/groups/$(gid)/wali/$(request.auth.uid));
     }
+    // Orang tua bisa memantau kelas anaknya bila paket Orang tua aktif, atau kelasnya milik
+    // sekolah Terpadu yang paketnya aktif (ditanggung sekolah).
+    function waliAktif(gid) {
+      return isWali(gid) && (planActive(request.auth.uid, 'keluarga')
+        || (grp(gid).get('school', '') != '' && planActive(grp(gid).school, 'sekolah') && terpadu(grp(gid).school)));
+    }
+    // Kelas aktif: kelas sekolah = paket Sekolah aktif; kelas guru = guru pemiliknya aktif.
+    function classActive(gid) {
+      return grp(gid).get('school', '') != ''
+        ? planActive(grp(gid).school, 'sekolah')
+        : guruActive(grp(gid).ownerId, grp(gid).get('via', ''));
+    }
+    // Yang mengajar di kelas ini: pemilik kelas atau guru pengajar.
+    function canTeach(gid) { return ownsGrp(gid) || isPengajar(gid); }
 
     // Kode hanya bisa dibuka satu per satu (tidak bisa didaftar), jadi kode tidak bisa ditebak massal.
     // Dibuat dalam satu batch bersama dokumen grupnya. Kode yang sudah dipakai tidak bisa ditimpa.
@@ -394,25 +439,32 @@ service cloud.firestore {
     match /groups/{gid} {
       function owner() { return signedIn() && resource.data.ownerId == request.auth.uid; }
 
-      allow get: if isMe(gid) || owner() || isPengajar(gid) || isWali(gid) || (signedIn() && isMember(gid, request.auth.uid));
-      // Pemilik boleh mendaftar grupnya sendiri: where('ownerId', '==', uid).
-      allow list: if owner();
+      allow get: if isMe(gid) || owner() || superAdmin() || isPengajar(gid) || waliAktif(gid) || (signedIn() && isMember(gid, request.auth.uid));
+      // Pemilik boleh mendaftar grupnya sendiri: where('ownerId', '==', uid). Admin ZUI menghitung murid sekolah.
+      allow list: if owner() || superAdmin();
 
       // Hanya pemilik paket keluarga atau sekolah yang aktif. Grup keluarga tetap satu per
       // pemilik (id = uid pemilik). Kelas sekolah boleh banyak, id acak 20 karakter
       // (UID Firebase 28 karakter, jadi id kelas tidak bisa menyamar sebagai UID orang lain).
       // Kelas milik sekolah menyimpan field school = uid sekolah (pembuatnya sendiri).
       allow create: if signedIn()
-        && onlyKeys(['name', 'kind', 'ownerId', 'code', 'count', 'createdAt', 'school'])
+        && onlyKeys(['name', 'kind', 'ownerId', 'code', 'count', 'createdAt', 'school', 'via'])
         && (!('school' in request.resource.data)
             || (request.resource.data.school == request.auth.uid
                 && request.resource.data.kind == 'sekolah'
-                && exists(/databases/$(database)/documents/schools/$(request.auth.uid))))
+                && !('via' in request.resource.data)
+                && exists(/databases/$(database)/documents/schools/$(request.auth.uid))
+                && terpadu(request.auth.uid)))
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.kind in ['keluarga', 'sekolah']
         && (gid == request.auth.uid
             || (gid.size() == 20 && request.resource.data.kind == 'sekolah'))
-        && planActive(request.auth.uid, request.resource.data.kind)
+        // Grup keluarga gratis (hanya menyambungkan orang tua dan anak). Kelas butuh paket:
+        // kelas sekolah = paket Sekolah Terpadu, kelas guru = guru aktif.
+        && (request.resource.data.kind == 'keluarga'
+            || ('school' in request.resource.data && planActive(request.auth.uid, 'sekolah'))
+            || (!('school' in request.resource.data)
+                && guruActive(request.auth.uid, request.resource.data.get('via', ''))))
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 60
@@ -459,7 +511,7 @@ service cloud.firestore {
           && uid != grp(gid).ownerId
           && grpOpen(gid)
           && request.resource.data.code == grp(gid).code
-          && planActive(grp(gid).ownerId, grp(gid).kind)
+          && (grp(gid).kind == 'keluarga' || classActive(gid))
           && grpAfter(gid).count == grp(gid).count + 1
           && (grp(gid).kind != 'keluarga' || grpAfter(gid).count <= 3);
 
@@ -480,10 +532,10 @@ service cloud.firestore {
       // Sekolah menugaskan guru (yang sudah bergabung ke sekolahnya) beserta mapelnya.
       // Siswa di kelas boleh melihat daftar guru dan mapel.
       match /pengajar/{uid} {
-        allow read: if isMe(uid) || ownsGrp(gid) || isWali(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow read: if isMe(uid) || ownsGrp(gid) || waliAktif(gid) || (signedIn() && isMember(gid, request.auth.uid));
         allow create, update: if ownsGrp(gid)
-          && grp(gid).get('school', '') == request.auth.uid
-          && isGuruOf(request.auth.uid, uid)
+          && ((grp(gid).get('school', '') == request.auth.uid && isGuruOf(request.auth.uid, uid))
+              || (grp(gid).get('school', '') == '' && grp(gid).kind == 'sekolah' && uid == request.auth.uid))
           && onlyKeys(['uid', 'nama', 'mapel', 'at'])
           && request.resource.data.uid == uid
           && request.resource.data.nama is string
@@ -515,7 +567,7 @@ service cloud.firestore {
       // Pesan orang tua dan guru. id = uidOrtu + '_' + uidGuru. Hanya orang tua (wali di kelas ini)
       // dan guru (pengajar di kelas ini) yang bersangkutan; sekolah dan orang lain tidak bisa membaca.
       match /chat/{tid} {
-        function pihak(o, g) { return (isMe(o) && isWali(gid)) || (isMe(g) && isPengajar(gid)); }
+        function pihak(o, g) { return (isMe(o) && waliAktif(gid)) || (isMe(g) && isPengajar(gid)); }
         function okDari(o, g, d) { return (isMe(o) && d == 'ortu') || (isMe(g) && d == 'guru'); }
         // Sekolah hanya bisa membuka percakapan saat kelas ditutup untuk dihapus (pembersihan).
         allow read: if (signedIn() && pihak(resource.data.ortu, resource.data.guru)) || (ownsGrp(gid) && !grpOpen(gid));
@@ -546,12 +598,40 @@ service cloud.firestore {
         }
       }
 
+      // Absensi per pertemuan: sesi {tgl, mapel, by, at}, status tiap murid di hadir/{uid}
+      // (H hadir, I izin, S sakit, A alpa). Murid hanya melihat statusnya sendiri.
+      match /absen/{sesi} {
+        allow read: if canTeach(gid) || (signedIn() && isMember(gid, request.auth.uid)) || waliAktif(gid);
+        allow create, update: if canTeach(gid)
+          && grpOpen(gid)
+          && classActive(gid)
+          && onlyKeys(['tgl', 'mapel', 'by', 'at'])
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.tgl is string && request.resource.data.tgl.size() == 10
+          && request.resource.data.mapel is string && request.resource.data.mapel.size() <= 60
+          && request.resource.data.at == request.time;
+        allow delete: if canTeach(gid);
+
+        match /hadir/{uid} {
+          allow read: if isMe(uid) || isParentOf(uid) || canTeach(gid);
+          allow create, update: if canTeach(gid)
+            && isMember(gid, uid)
+            && onlyKeys(['uid', 's', 'tgl', 'mapel', 'at'])
+            && request.resource.data.uid == uid
+            && request.resource.data.s in ['H', 'I', 'S', 'A']
+            && request.resource.data.tgl is string && request.resource.data.tgl.size() == 10
+            && request.resource.data.mapel is string && request.resource.data.mapel.size() <= 60
+            && request.resource.data.at == request.time;
+          allow delete: if canTeach(gid) || isMe(uid);
+        }
+      }
+
       match /items/{itemId} {
-        allow read: if isMe(gid) || ownsGrp(gid) || isPengajar(gid) || isWali(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow read: if isMe(gid) || ownsGrp(gid) || isPengajar(gid) || waliAktif(gid) || (signedIn() && isMember(gid, request.auth.uid));
         allow create: if ownsGrp(gid)
           && grp(gid).kind == 'sekolah'
           && grpOpen(gid)
-          && planActive(request.auth.uid, 'sekolah')
+          && classActive(gid)
           && onlyKeys(['kind', 'data', 'createdAt'])
           && request.resource.data.kind in ['tugas', 'jadwal']
           && request.resource.data.data is map
@@ -560,7 +640,7 @@ service cloud.firestore {
         allow create: if isPengajar(gid)
           && grp(gid).kind == 'sekolah'
           && grpOpen(gid)
-          && planActive(grp(gid).ownerId, 'sekolah')
+          && classActive(gid)
           && onlyKeys(['kind', 'data', 'createdAt', 'by', 'mapel'])
           && request.resource.data.kind == 'tugas'
           && request.resource.data.by == request.auth.uid
@@ -621,6 +701,10 @@ service cloud.firestore {
     }
     // Nilai milik sendiri: collectionGroup('nilai').where('uid', '==', uidSendiri)
     match /{path=**}/nilai/{uid} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
+    }
+    // Kehadiran sendiri atau anak: collectionGroup('hadir').where('uid', '==', uid)
+    match /{path=**}/hadir/{uid} {
       allow read: if signedIn() && (resource.data.uid == request.auth.uid || isParentOf(resource.data.uid));
     }
     // Kelas yang diajar: collectionGroup('pengajar').where('uid', '==', uidSendiri)
