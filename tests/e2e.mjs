@@ -12,7 +12,7 @@ const AUTH = 'http://localhost:9099';
 const SDK = (f) => readFileSync(new URL('node_modules/firebase-compat/' + f.replace(/[^\w.-]/g, ''), import.meta.url));
 const APP = readFileSync(new URL('../app.html', import.meta.url), 'utf8')
   .replace("projectId:'sudiku-zui'", "projectId:'" + PROJECT + "'")
-  .replace("db=firebase.firestore()}", "db=firebase.firestore();fa.useEmulator('" + AUTH + "');db.useEmulator('localhost',8080)}");
+  .replace("db=firebase.firestore()}", "db=firebase.firestore();fa.useEmulator('" + AUTH + "',{disableWarnings:true});db.useEmulator('localhost',8080)}");
 if (!APP.includes('useEmulator')) throw new Error('gagal menyambungkan app.html ke emulator');
 const SW = readFileSync(new URL('../sw.js', import.meta.url));
 
@@ -39,6 +39,7 @@ const later = Timestamp.fromMillis(Date.now() + 30 * 864e5);
 
 const G = await akun('guru@sekolah.id'), L = await akun('lama@sekolah.id');
 const S1 = await akun('andi@siswa.id'), S2 = await akun('budi@siswa.id');
+const D = await akun('dewi@coba.id');
 await admin(async (d) => {
   for (const [u, n] of [[G, 'Bu Guru'], [L, 'Pak Lama']]) {
     await setDoc(doc(d, 'companies', u), { name: n, owner: u, created_at: Timestamp.now(), plan: 'business', until: later });
@@ -50,8 +51,9 @@ await admin(async (d) => {
 });
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium', args: ['--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests'] });
-async function buka(email, notif) {
-  const ctx = await browser.newContext({ permissions: notif ? ['notifications'] : [] });
+async function buka(email, notif, hp) {
+  const ctx = await browser.newContext({ permissions: notif ? ['notifications'] : [], viewport: hp ? { width: 390, height: 844 } : undefined });
+  if (hp) await ctx.addInitScript(() => { if (!sessionStorage.getItem('x')) { sessionStorage.setItem('x', '1'); localStorage.setItem('sk_play', '1'); } });
   await ctx.route('https://www.gstatic.com/firebasejs/**', (rt) => rt.fulfill({ contentType: 'text/javascript', body: SDK(rt.request().url().split('/').pop()) }));
   await ctx.route('https://fonts.googleapis.com/**', (rt) => rt.abort());
   await ctx.route('http://localhost:5055/**', (rt) => {
@@ -85,9 +87,9 @@ try {
   console.log('Guru membuat dua kelas');
   const g = await buka('guru@sekolah.id');
   await grup(g);
-  await g.fill('#gn', '7A Matematika'); await g.click('#gr >> button:has-text("Buat kelas")'); await g.waitForTimeout(1000);
+  await g.fill('#gn', '7A Matematika'); await g.click('#gr >> button:text-is("Buat")'); await g.waitForTimeout(1000);
   await g.waitForSelector('text=Buat kelas lain');
-  await g.fill('#gn', '7B Matematika'); await g.click('#gr >> button:has-text("Buat kelas")'); await g.waitForTimeout(1500);
+  await g.fill('#gn', '7B Matematika'); await g.click('#gr >> button:text-is("Buat")'); await g.waitForTimeout(1500);
   const kelas = await admin(async (d) => (await getDocs(collection(d, 'groups'))).docs.map((x) => ({ id: x.id, ...x.data() })).filter((x) => x.ownerId === G));
   ok(kelas.length === 2 && kelas.every((k) => k.id.length === 20), 'dua kelas dengan id acak 20 karakter');
   ok((await g.locator('text=Kode untuk dibagikan').count()) === 2, 'kedua kelas tampil di tab Grup');
@@ -129,7 +131,7 @@ try {
 
   console.log('Pengingat lokal');
   await b.click('#nav >> text=Beranda');
-  await b.click('[aria-label=Profil]');
+  await b.click('[aria-label=Pengaturan]');
   ok(/mati/.test(await b.locator('#ntb').innerText()), 'pengingat awalnya mati');
   await b.click('#ntb'); await b.waitForTimeout(800);
   ok(/aktif/.test(await b.locator('#ntb').innerText()), 'pengingat aktif setelah izin diberikan');
@@ -173,7 +175,7 @@ try {
     an: (await getDocs(collection(d, 'groups', k7a.id, 'anggota'))).size,
   }));
   ok(sisa.g === 0 && !sisa.c && sisa.an === 0, 'kelas, kode, dan anggota terhapus');
-  await l.click('#nav >> text=Beranda'); await l.click('[aria-label=Profil]');
+  await l.click('#nav >> text=Beranda'); await l.click('[aria-label=Pengaturan]');
   await l.click('text=Hapus akun'); await l.waitForTimeout(3000);
   const lama = await admin(async (d) => ({ g: (await getDoc(doc(d, 'groups', L))).exists(), an: (await getDocs(collection(d, 'groups', L, 'anggota'))).size, it: (await getDocs(collection(d, 'groups', L, 'items'))).size, c: (await getDoc(doc(d, 'codes', 'LAMA0001'))).exists() }));
   ok(!lama.g && !lama.an && !lama.it && !lama.c, 'hapus akun guru lama membersihkan kelas lama');
@@ -218,6 +220,51 @@ try {
   const ud = await admin(async (d) => (await getDoc(doc(d, 'users', cu))).data());
   ok(ud && ud.data.kegiatan[0].judul === 'PR dari versi lama', 'data di perangkat tersimpan ke akun Firebase baru');
   await ctx.close();
+
+
+  console.log('HP: menu samping, lonceng, pesan, masa percobaan, dan paket Sekolah');
+  const h = await buka('dewi@coba.id', false, true);
+  ok(await h.evaluate(() => !PLAY && localStorage.getItem('sk_play') === null), 'tanda Android lama di localStorage dihapus, tombol Berlangganan tidak lagi tersembunyi');
+  ok(await h.locator('[aria-label=Menu]').isVisible() && await h.locator('[aria-label=Pengingat]').isVisible() && await h.locator('[aria-label=Pesan]').isVisible(), 'bilah atas: ☰ kiri, 🔔 dan 💬 kanan');
+  const tbx = await h.locator('#tb').boundingBox(), mb = await h.locator('[aria-label=Menu]').boundingBox(), pb = await h.locator('[aria-label=Pesan]').boundingBox();
+  ok(mb.x < 40 && pb.x + pb.width > tbx.width - 40, 'tombol menu di kiri, pesan di kanan');
+  ok((await h.locator('#nav').boundingBox()).x < -100, 'menu samping tertutup di awal');
+  await h.click('[aria-label=Menu]'); await h.waitForTimeout(400);
+  ok((await h.locator('#nav').boundingBox()).x >= 0, 'menu samping terbuka setelah ☰ ditekan');
+  const set = await h.locator('#nav .set').boundingBox();
+  ok(set.y > 844 - 120 && set.x < 30, 'Pengaturan ada di kiri bawah menu (y=' + Math.round(set.y) + ')');
+  await h.screenshot({ path: process.env.SHOT_DIR ? process.env.SHOT_DIR + '/menu.png' : '/dev/null' }).catch(() => {});
+  await h.click('#nav >> text=Grup'); await h.waitForTimeout(400);
+  ok((await h.locator('#nav').boundingBox()).x < -100, 'menu tertutup setelah memilih Grup');
+  await h.waitForFunction(() => !document.querySelector('#gr.empty')); await h.waitForTimeout(800);
+  ok(await h.locator('text=Buat kelas atau grup keluarga').isVisible(), 'masa percobaan bisa membuat kelas dan grup keluarga');
+  await h.fill('#gn', 'Kelas Coba'); await h.click('#gr >> button:text-is("Buat")'); await h.waitForTimeout(1500);
+  await h.selectOption('#gkind', 'keluarga'); await h.fill('#gn', 'Keluarga Dewi'); await h.click('#gr >> button:text-is("Buat")'); await h.waitForTimeout(1500);
+  const dg = await admin(async (d) => (await getDocs(collection(d, 'groups'))).docs.map((x) => x.data()).filter((x) => x.ownerId === D).map((x) => x.kind).sort().join(','));
+  ok(dg === 'keluarga,sekolah', 'kelas dan grup keluarga dibuat selama masa percobaan');
+  ok(!(await h.locator('#gkind').count()), 'setelah grup keluarga ada, hanya kelas yang bisa ditambah');
+  await h.evaluate(() => go('kegiatan')); await h.click('.fab');
+  await h.fill('#f_judul', 'Ulangan Matematika'); await h.fill('#f_tgl', besok); await h.selectOption('#f_kat', 'Ujian');
+  await h.click('#sh >> text=Simpan'); await h.waitForTimeout(300);
+  ok((await h.locator('[aria-label=Pengingat] .bdg').innerText()) === '1', 'lonceng menampilkan 1 pengingat');
+  await h.click('[aria-label=Pengingat]');
+  ok(await h.locator('#sh >> text=Ulangan Matematika').isVisible() && /Ujian · besok/.test(await h.locator('#sh').innerText()), 'lonceng menampilkan ujian besok');
+  await h.click('#sh >> button:has-text("Tutup")');
+  await h.click('[aria-label=Pesan]'); await h.waitForTimeout(300);
+  ok(await h.locator('text=Chat dengan admin ZUI').isVisible(), 'tombol pesan membuka Chat admin');
+  await h.evaluate(() => cl());
+  await h.click('[aria-label=Menu]'); await h.click('#nav .set'); await h.waitForTimeout(300);
+  ok(await h.locator('#sh h3:has-text("Pengaturan")').isVisible(), 'Pengaturan terbuka dari menu');
+  await h.click('#sh >> button:has-text("Premium")');
+  ok(/Masa percobaan semua fitur/.test(await h.locator('#sh').innerText()), 'status masa percobaan semua fitur');
+  await h.click('#sh >> button:has-text("Berlangganan")'); await h.waitForSelector('#sp');
+  const opts = await h.locator('#sp option').allInnerTexts();
+  ok(opts.length === 3 && /Sekolah/.test(opts[2]), 'pilihan paket: ' + opts.join(', '));
+  await h.selectOption('#sp', 'business'); await h.selectOption('#sm', '6');
+  ok((await h.locator('#spr').innerText()) === 'Rp750.000', 'harga Sekolah 6 bulan Rp750.000');
+  await h.fill('#sref', 'QRIS123'); await h.click('#sh >> button:has-text("Kirim")'); await h.waitForTimeout(1500);
+  const rq = await admin(async (d) => (await getDocs(collection(d, 'subreqs'))).docs.map((x) => x.data()).find((x) => x.cid === D));
+  ok(rq && rq.plan === 'business' && rq.months === 6 && rq.amount === 750000 && rq.status === 'wait', 'permintaan paket Sekolah masuk antrean Zui Admin');
 
   console.log(`\nLulus ${pass} pemeriksaan.`);
 } finally {

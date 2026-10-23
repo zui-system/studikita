@@ -143,10 +143,24 @@ test('grup keluarga tetap hanya di groups/{uid sendiri}', async () => {
   await assertSucceeds(newClass(P, P, 'KODE0006', 'keluarga'));
 });
 
-test('paket habis, percobaan, atau paket salah tidak bisa membuat kelas', async () => {
+test('paket habis, tanpa dokumen paket, atau paket salah tidak bisa membuat kelas', async () => {
   await assertFails(newClass(E, K1, 'KODE0007'));
   await assertFails(newClass(X, K1, 'KODE0008'));
   await assertFails(newClass(P, K1, 'KODE0009'));
+});
+
+test('masa percobaan membuka kelas sekolah dan grup keluarga', async () => {
+  const C = U('coba');
+  await setDoc(doc(db(C), 'companies', C), { name: 'Coba', owner: C, created_at: serverTimestamp() });
+  await assertSucceeds(newClass(C, K1, 'COBA0001'));
+  await assertSucceeds(newClass(C, C, 'COBA0002', 'keluarga'));
+  await assertSucceeds(addItem(C, K1, 't1'));
+  await assertSucceeds(join(S1, K1, 'COBA0001', 'Andi'));
+  await assertSucceeds(join(S2, C, 'COBA0002'));
+  // paket berbayar yang sudah habis tidak kembali ke masa percobaan
+  await env.withSecurityRulesDisabled((c) => updateDoc(doc(c.firestore(), 'companies', C), { plan: 'starter', until: past }));
+  await assertFails(newClass(C, K2, 'COBA0003'));
+  await assertFails(join(X, K1, 'COBA0001', 'x'));
 });
 
 test('ownerId harus pembuatnya dan kode tidak bisa diarahkan ke kelas orang lain', async () => {
@@ -278,7 +292,9 @@ test('standar: pengguna tidak bisa mengisi paket sendiri; permintaan bayar tetap
   await assertSucceeds(setDoc(doc(d, 'companies', X), { name: 'x', owner: X, created_at: serverTimestamp() }));
   await assertFails(updateDoc(doc(d, 'companies', X), { plan: 'business' }));
   await assertSucceeds(setDoc(doc(d, 'subreqs', 'r1'), { cid: X, coName: 'x', plan: 'starter', months: 1, amount: 19000, cur: 'IDR', ref: 'REF1', by: X, byEmail: 'x@x.id', status: 'wait', at: serverTimestamp() }));
-  await assertFails(setDoc(doc(d, 'subreqs', 'r2'), { cid: X, coName: 'x', plan: 'business', months: 1, amount: 1, cur: 'IDR', ref: 'REF1', by: X, byEmail: 'x@x.id', status: 'wait', at: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(d, 'subreqs', 'r3'), { cid: X, coName: 'x', plan: 'business', months: 6, amount: 750000, cur: 'IDR', ref: 'REF3', by: X, byEmail: 'x@x.id', status: 'wait', at: serverTimestamp() }));
+  await assertFails(setDoc(doc(d, 'subreqs', 'r4'), { cid: X, coName: 'x', plan: 'starter', months: 1, amount: 1, cur: 'IDR', ref: 'REF1', by: X, byEmail: 'x@x.id', status: 'active', at: serverTimestamp() }));
+  await assertFails(setDoc(doc(d, 'subreqs', 'r2'), { cid: X, coName: 'x', plan: 'gratis', months: 1, amount: 1, cur: 'IDR', ref: 'REF1', by: X, byEmail: 'x@x.id', status: 'wait', at: serverTimestamp() }));
   await assertSucceeds(setDoc(doc(d, 'users', X), { data: { n: 'x' }, updatedAt: serverTimestamp() }));
   await assertFails(getDoc(doc(db(T), 'users', X)));
 });
