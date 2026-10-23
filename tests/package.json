@@ -1,0 +1,16 @@
+{
+  "name": "studiku-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:rules": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-studiku \"node --test rules.test.mjs\"",
+    "test:e2e": "firebase --config ../firebase.json emulators:exec --only auth,firestore --project demo-studiku \"node e2e.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.34.1",
+    "playwright-core": "^1.64.1",
+    "firebase-compat": "npm:firebase@10.12.2"
+  }
+}

@@ -12,9 +12,12 @@ rules_version = '2';
 //   users/{uid}                        data lengkap pengguna (isi S di app.html), hanya pemilik
 //   pantau/{uid}                       ringkasan untuk orang tua: tanpa catatan pelajaran
 //   codes/{kode}                       kode grup -> id grup, hanya bisa dibuka satu per satu
-//   groups/{uidPemilik}                satu grup per pemilik, id grup = uid pemilik
-//   groups/{gid}/anggota/{uid}         anggota grup
+//   groups/{gid}                       grup. Pemilik = field ownerId. Grup keluarga dan grup lama:
+//                                      id = uid pemilik. Kelas sekolah baru: id acak 20 karakter,
+//                                      jadi satu guru bisa punya beberapa kelas
+//   groups/{gid}/anggota/{uid}         anggota grup (dengan nama panggilan, dilihat pemilik)
 //   groups/{gid}/items/{id}            tugas dan jadwal kelas (grup sekolah)
+//   groups/{gid}/items/{id}/selesai/{uid}  tanda tugas kelas selesai, dibaca siswa itu dan guru
 //
 // Paket Studiku di Zui Admin: starter = Pelajar, pro = Keluarga, business = Sekolah dan bimbel.
 
@@ -172,6 +175,13 @@ service cloud.firestore {
 
     // ---- Grup ----
 
+    // Pemilik grup menurut field ownerId (grup lama juga punya ownerId = id grup).
+    function ownsGrp(gid) {
+      return signedIn() && grpExists(gid) && grp(gid).ownerId == request.auth.uid;
+    }
+    function grpOpen(gid) { return grp(gid).get('closed', false) == false; }
+    function okNick(d) { return !('nick' in d) || (d.nick is string && d.nick.size() <= 60); }
+
     // Kode hanya bisa dibuka satu per satu (tidak bisa didaftar), jadi kode tidak bisa ditebak massal.
     // Dibuat dalam satu batch bersama dokumen grupnya. Kode yang sudah dipakai tidak bisa ditimpa.
     match /codes/{code} {
@@ -180,22 +190,30 @@ service cloud.firestore {
       allow create: if signedIn()
         && code.size() >= 8
         && onlyKeys(['gid'])
-        && request.resource.data.gid == request.auth.uid
-        && grpExistsAfter(request.auth.uid)
-        && grpAfter(request.auth.uid).code == code;
-      allow delete: if signedIn() && resource.data.gid == request.auth.uid;
+        && grpExistsAfter(request.resource.data.gid)
+        && grpAfter(request.resource.data.gid).ownerId == request.auth.uid
+        && grpAfter(request.resource.data.gid).code == code;
+      allow delete: if signedIn()
+        && (resource.data.gid == request.auth.uid || ownsGrp(resource.data.gid));
     }
 
     match /groups/{gid} {
-      allow get: if isMe(gid) || (signedIn() && isMember(gid, request.auth.uid));
-      allow list: if false;
+      function owner() { return signedIn() && resource.data.ownerId == request.auth.uid; }
 
-      // Hanya pemilik paket keluarga atau sekolah yang aktif.
-      allow create: if isMe(gid)
+      allow get: if isMe(gid) || owner() || (signedIn() && isMember(gid, request.auth.uid));
+      // Pemilik boleh mendaftar grupnya sendiri: where('ownerId', '==', uid).
+      allow list: if owner();
+
+      // Hanya pemilik paket keluarga atau sekolah yang aktif. Grup keluarga tetap satu per
+      // pemilik (id = uid pemilik). Kelas sekolah boleh banyak, id acak 20 karakter
+      // (UID Firebase 28 karakter, jadi id kelas tidak bisa menyamar sebagai UID orang lain).
+      allow create: if signedIn()
         && onlyKeys(['name', 'kind', 'ownerId', 'code', 'count', 'createdAt'])
-        && request.resource.data.ownerId == gid
+        && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.kind in ['keluarga', 'sekolah']
-        && planActive(gid, request.resource.data.kind)
+        && (gid == request.auth.uid
+            || (gid.size() == 20 && request.resource.data.kind == 'sekolah'))
+        && planActive(request.auth.uid, request.resource.data.kind)
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 60
@@ -205,14 +223,16 @@ service cloud.firestore {
         && request.resource.data.count == 0
         && request.resource.data.createdAt == request.time;
 
-      // Pemilik boleh mengganti nama. Jumlah anggota (count) hanya berubah
-      // bersamaan dengan anggota yang bergabung atau keluar sendiri.
+      // Pemilik boleh mengganti nama, atau menutup grup (closed) sebelum menghapusnya supaya
+      // anggota bisa dibersihkan. Jumlah anggota (count) hanya berubah bersamaan dengan
+      // anggota yang bergabung atau keluar sendiri.
       allow update: if
-        (isMe(gid)
+        (owner()
           && changedOnly(['name'])
           && request.resource.data.name is string
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 60)
+        || (owner() && changedOnly(['closed']) && request.resource.data.closed == true)
         || (signedIn() && changedOnly(['count'])
           && ((request.resource.data.count == resource.data.count + 1
                 && !isMember(gid, request.auth.uid)
@@ -221,50 +241,79 @@ service cloud.firestore {
                 && isMember(gid, request.auth.uid)
                 && !isMemberAfter(gid, request.auth.uid))));
 
-      allow delete: if isMe(gid);
+      allow delete: if owner();
 
       match /anggota/{uid} {
-        allow read: if isMe(uid) || isMe(gid);
+        allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid);
 
         // Bergabung harus memakai kode grup yang benar, saat paket pemilik masih aktif,
-        // dan menaikkan count di batch yang sama. Grup keluarga maksimal 3 anak.
+        // grup belum ditutup, dan menaikkan count di batch yang sama. Grup keluarga maksimal 3 anak.
         allow create: if isMe(uid)
           && uid != gid
-          && onlyKeys(['uid', 'code', 'joinedAt'])
+          && onlyKeys(['uid', 'code', 'joinedAt', 'nick'])
           && request.resource.data.uid == uid
           && request.resource.data.joinedAt == request.time
+          && okNick(request.resource.data)
           && grpExists(gid)
+          && uid != grp(gid).ownerId
+          && grpOpen(gid)
           && request.resource.data.code == grp(gid).code
-          && planActive(gid, grp(gid).kind)
+          && planActive(grp(gid).ownerId, grp(gid).kind)
           && grpAfter(gid).count == grp(gid).count + 1
           && (grp(gid).kind != 'keluarga' || grpAfter(gid).count <= 3);
 
-        allow update: if false;
+        // Anggota boleh mengganti nama panggilannya yang dilihat pemilik grup.
+        allow update: if isMe(uid)
+          && changedOnly(['nick'])
+          && request.resource.data.nick is string
+          && request.resource.data.nick.size() <= 60;
 
-        // Anggota keluar sendiri (count turun di batch yang sama),
-        // atau pemilik membersihkan anggota setelah grupnya dihapus.
-        allow delete: if (isMe(uid) || isMe(gid))
-          && (!grpExistsAfter(gid) || grpAfter(gid).count == grp(gid).count - 1);
+        // Anggota keluar sendiri (count turun di batch yang sama), pemilik membersihkan
+        // anggota setelah grupnya dihapus (grup lama), atau pemilik membersihkan anggota
+        // grup yang sudah ditutup (closed).
+        allow delete: if ((isMe(uid) || isMe(gid))
+            && (!grpExistsAfter(gid) || grpAfter(gid).count == grp(gid).count - 1))
+          || (ownsGrp(gid) && !grpOpen(gid));
       }
 
       match /items/{itemId} {
-        allow read: if isMe(gid) || (signedIn() && isMember(gid, request.auth.uid));
-        allow create: if isMe(gid)
-          && grpExists(gid)
+        allow read: if isMe(gid) || ownsGrp(gid) || (signedIn() && isMember(gid, request.auth.uid));
+        allow create: if ownsGrp(gid)
           && grp(gid).kind == 'sekolah'
-          && planActive(gid, 'sekolah')
+          && grpOpen(gid)
+          && planActive(request.auth.uid, 'sekolah')
           && onlyKeys(['kind', 'data', 'createdAt'])
           && request.resource.data.kind in ['tugas', 'jadwal']
           && request.resource.data.data is map
           && request.resource.data.createdAt == request.time;
         allow update: if false;
-        allow delete: if isMe(gid);
+        allow delete: if isMe(gid) || ownsGrp(gid);
+
+        // Siswa menandai tugas kelas selesai. Guru pemilik kelas melihat siapa saja
+        // (nama panggilan) yang sudah selesai. Siswa lain tidak bisa melihatnya.
+        match /selesai/{uid} {
+          allow read: if isMe(uid) || isMe(gid) || ownsGrp(gid);
+          allow create: if isMe(uid)
+            && isMember(gid, uid)
+            && onlyKeys(['uid', 'nick', 'at'])
+            && request.resource.data.uid == uid
+            && request.resource.data.at == request.time
+            && request.resource.data.nick is string
+            && request.resource.data.nick.size() <= 60
+            && get(/databases/$(database)/documents/groups/$(gid)/items/$(itemId)).data.kind == 'tugas';
+          allow update: if false;
+          allow delete: if isMe(uid) || isMe(gid) || ownsGrp(gid);
+        }
       }
     }
 
     // Supaya pengguna bisa mencari grup yang ia ikuti:
     // collectionGroup('anggota').where('uid', '==', uidSendiri)
     match /{path=**}/anggota/{uid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+    // Tugas kelas yang sudah ditandai selesai: collectionGroup('selesai').where('uid', '==', uidSendiri)
+    match /{path=**}/selesai/{uid} {
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
     }
   }
