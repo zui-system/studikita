@@ -78,6 +78,12 @@ service cloud.firestore {
                 || request.time < timestamp.date(2026, 10, 23) + duration.value(14, 'd'))));
     }
 
+    // Salinan status paket untuk kelas sekolah (field pk di groups), harus sama dengan companies/{uid}.
+    function pkOf(uid) {
+      let c = get(/databases/$(database)/documents/companies/$(uid)).data;
+      return {'plan': c.get('plan', ''), 'until': c.get('until', null), 'free': c.get('free', false), 'created_at': c.get('created_at', null)};
+    }
+
     // ---- Paket (pola standar Zui Admin) ----
 
     match /companies/{cid} {
@@ -426,6 +432,8 @@ service cloud.firestore {
           && request.resource.data.name.size() > 0
           && request.resource.data.name.size() <= 60)
         || (owner() && changedOnly(['closed']) && request.resource.data.closed == true)
+        // Sekolah menyalin status paketnya ke kelas supaya murid ikut Premium (tidak bisa dipalsukan).
+        || (owner() && changedOnly(['pk']) && request.resource.data.pk == pkOf(request.auth.uid))
         || (signedIn() && changedOnly(['count'])
           && ((request.resource.data.count == resource.data.count + 1
                 && !isMember(gid, request.auth.uid)

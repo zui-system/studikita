@@ -578,3 +578,29 @@ test('pesan orang tua dan guru: hanya keduanya, guru harus mengajar di kelas itu
   for (const d of c.docs) await assertSucceeds(deleteDoc(d.ref));
   await assertSucceeds(deleteDoc(doc(db(SK), 'groups', KLS, 'wali', OR)));
 });
+
+// ---- Perbaikan: salinan paket sekolah di kelas, jadwal kelas oleh sekolah ----
+
+test('sekolah menyalin status paketnya ke kelas; salinan palsu ditolak', async () => {
+  await siapSekolah();
+  let c; await env.withSecurityRulesDisabled(async (x) => { c = (await getDoc(doc(x.firestore(), 'companies', SK))).data(); });
+  await assertFails(updateDoc(doc(db(SK), 'groups', KLS), { pk: { plan: 'business', until: later, free: false, created_at: c.created_at } }));
+  await assertFails(updateDoc(doc(db(SK), 'groups', KLS), { pk: { plan: '', until: null, free: true, created_at: c.created_at } }));
+  await assertSucceeds(updateDoc(doc(db(SK), 'groups', KLS), { pk: { plan: '', until: null, free: false, created_at: c.created_at } }));
+  await assertFails(updateDoc(doc(db(G1), 'groups', KLS), { pk: { plan: '', until: null, free: false, created_at: c.created_at } }));
+});
+
+test('sekolah mengisi jadwal kelas; guru tidak bisa', async () => {
+  await siapSekolah();
+  const j = { kind: 'jadwal', data: { judul: 'Matematika', hari: 'Sen', mulai: '07:00', selesai: '08:20', guru: 'Bu Rina', guruUid: G1 }, createdAt: serverTimestamp() };
+  await assertSucceeds(setDoc(doc(db(SK), 'groups', KLS, 'items', 'j1'), j));
+  await assertFails(setDoc(doc(db(G1), 'groups', KLS, 'items', 'j2'), j));
+  await assertSucceeds(getDoc(doc(db(M1), 'groups', KLS, 'items', 'j1')));
+  await assertSucceeds(deleteDoc(doc(db(SK), 'groups', KLS, 'items', 'j1')));
+});
+
+test('profil bisa diubah sendiri tanpa mengganti peran', async () => {
+  await prof(M1, 'murid', { kelas: 'Kelas 7' });
+  await assertSucceeds(prof(M1, 'murid', { kelas: 'Kelas 8', hp: '081299990000' }));
+  await assertFails(prof(M1, 'sekolah', { kelas: 'Kelas 8' }));
+});
